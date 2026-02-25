@@ -416,11 +416,12 @@ npm test -- --coverage
 
 | Tài liệu | Mô tả |
 |---|---|
-| [EMAIL_API.md](./EMAIL_API.md) | Email Module — gửi email hàng loạt, quản lý template, filter recipients |
-| [NEWS_FEED_MANAGEMENT_API.md](./NEWS_FEED_MANAGEMENT_API.md) | Activities Module — quản lý bài đăng, approval workflow, GetStream sync |
-| [FCM_NOTIFICATION_SYSTEM.md](./FCM_NOTIFICATION_SYSTEM.md) | Notification Module — push notification qua Firebase, Bull Queue architecture |
-| [USER_MANAGEMENT_API.md](./USER_MANAGEMENT_API.md) | Users Module — CRUD user, impersonation, export, plan management |
-| [PHP_CREATE_USER_LOGIC.md](./PHP_CREATE_USER_LOGIC.md) | Reference — business logic tạo user từ Laravel incard-biz (để so sánh migration) |
+| [Email Module](https://github.com/devinapps/public-folder/blob/main/EMAIL_API.md) | Email — gửi email hàng loạt, quản lý template, filter recipients |
+| [Email Campaign UI](https://github.com/devinapps/public-folder/blob/main/EMAIL_CAMPAIGN_UI_REQUIREMENTS.md) | Email Campaign — UI requirements, wireframe, API mapping cho Next.js frontend |
+| [Activities Module](https://github.com/devinapps/public-folder/blob/main/NEWS_FEED_MANAGEMENT_API.md) | Activities — quản lý bài đăng, approval workflow, GetStream sync |
+| [Notification Module](https://github.com/devinapps/public-folder/blob/main/FCM_NOTIFICATION_SYSTEM.md) | Notifications — push notification qua Firebase, Bull Queue architecture |
+| [Users Module](https://github.com/devinapps/public-folder/blob/main/USER_MANAGEMENT_API.md) | Users — CRUD user, impersonation, export, plan management |
+| [PHP Reference](https://github.com/devinapps/public-folder/blob/main/PHP_CREATE_USER_LOGIC.md) | Reference — business logic tạo user từ Laravel incard-biz (để so sánh migration) |
 
 ### Postman Collections
 
