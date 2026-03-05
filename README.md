@@ -4,7 +4,7 @@
 **Database:** MySQL 8 (TypeORM + Drizzle ORM)
 **Port mặc định:** `3001`
 **Global prefix:** `/api`
-**Last Updated:** 2026-02-24
+**Last Updated:** 2026-03-04
 
 ---
 
@@ -15,6 +15,8 @@
 - [Modules](#modules)
   - [Auth](#auth-module)
   - [Users](#users-module)
+  - [Business Cards](#business-cards-module)
+  - [Appointments](#appointments-module)
   - [Activities (News Feed)](#activities-module)
   - [Notifications (FCM)](#notifications-module)
   - [Email](#email-module)
@@ -125,6 +127,48 @@ Quản lý toàn bộ vòng đời user: tạo, sửa, xóa, phân quyền, impe
 - Quản lý contact và lịch hẹn (appointments)
 
 **Repositories:** `UsersRepository`, `PlansRepository`, `ContactsRepository`, `AppoinmentsRepository`, `QrcodeRepository`, `BusinessRepository`
+
+---
+
+### Business Cards Module
+
+**Path:** `src/modules/businesses/`
+**Reference PHP:** `CardController.php`, `BusinessController.php`
+
+Quản lý toàn bộ vòng đời business card (danh thiếp số) của user: tạo, cập nhật, xóa, gắn NFC card vật lý, generate QR code PNG, deeplink.
+
+**Tính năng nổi bật:**
+- CRUD business card với logo upload (multipart)
+- **QR PNG on-demand:** `profile_qr` (500×500, encode profile URL) và `contact_qr` (800×800, encode vCard VCF) được generate khi `GET /api/cards` hoặc `GET /api/cards/:id`, file lưu tại `storage/app/public/{type}/{slug}.png`
+- **Track view/scan:** Mỗi lần xem `GET /api/cards/:id` ghi `business_history` type `view` + increment `total_view`. Nếu `?type=scan` thì ghi thêm type `scan` + increment `total_scan`
+- **Link NFC card:** Gắn physical QR card (serial code) vào business card, reset `deep_link` để force regenerate QR
+- **Firebase Dynamic Link:** `POST /api/cards/:id/generate-deeplink` tạo short URL qua Firebase API, lưu vào `deep_link_firebase` — dùng để redirect vào mobile app
+- **Public profile:** `GET /api/businesses/public/:slug` cho FE Web, không cần auth, tự track view/scan, trả `deep_link_firebase`
+
+**Controllers:** `BusinessesController` (`/api/cards`), `CheckCardController` (`/api/check-card`), `BusinessesPublicController` (`/api/businesses`)
+
+**Static files:** `storage/app/public/` được serve tại `/storage` prefix
+
+**Tài liệu chi tiết:** [BUSINESS_API_REFERENCE.md](./BUSINESS_API_REFERENCE.md)
+
+---
+
+### Appointments Module
+
+**Path:** `src/modules/appointments/`
+**Reference PHP:** `AppointmentsController.php`
+
+Quản lý lịch hẹn giữa chủ business card (người nhận) và user đặt lịch (người gửi).
+
+**Tính năng nổi bật:**
+- Đặt lịch hẹn với chủ card: ghi `business_history` type `booked`, increment `total_appointment`, gửi FCM push notification đến chủ card
+- Chủ card accept/reject: gửi FCM push notification ngược lại cho người đặt, xóa notifications liên quan
+- **Public appointments:** Webhook cho Google Calendar sync (không cần auth) — tạo/update/xóa appointment theo `google_calendar_id`
+- Response hoàn toàn snake_case, `created_at`/`updated_at` format PHP `"YYYY MM DD HH:mm:ss"`
+
+**Controllers:** `AppointmentsController` (`/api/appointments`), `PublicAppointmentsController` (`/api/public-appointments`)
+
+**Tài liệu chi tiết:** [APPOINTMENT_API_REFERENCE.md](./APPOINTMENT_API_REFERENCE.md)
 
 ---
 
@@ -251,7 +295,8 @@ Cấu hình retry: 3 lần, exponential backoff bắt đầu từ 2000ms.
 
 ### Static Files
 
-Thư mục `uploads/` được serve tại `/uploads/*` qua `ServeStaticModule`. Cache-Control: 1 năm.
+- Thư mục `uploads/` được serve tại `/uploads/*` qua `ServeStaticModule`. Cache-Control: 1 năm.
+- Thư mục `storage/app/public/` được serve tại `/storage/*` qua `app.useStaticAssets()` (NestExpressApplication). Dùng cho QR code PNG và card assets.
 
 ### Bull Board (Queue Monitor)
 
@@ -289,7 +334,16 @@ Dùng chung MySQL database với `incard-biz`. Không dùng `synchronize: true` 
 | Bảng | Module | Mô tả |
 |---|---|---|
 | `users` | Users | User accounts, device_token, lang, notification_num |
-| `businesses` | Users | Business cards của user |
+| `businesses` | Business Cards | Business cards — title, slug, deep_link, deep_link_firebase, total_view/scan/appointment |
+| `contact_infos` | Business Cards | Email, phone, Whatsapp của mỗi card (JSON content) |
+| `social` | Business Cards | Social links của card (JSON: `[{"Platform":"url","id":0}]`) |
+| `services` | Business Cards | Product services và media của card (type: `service`\|`media`) |
+| `testimonials` | Business Cards | Testimonials của card |
+| `business_hours` | Business Cards | Giờ làm việc của card |
+| `business_histories` | Business Cards | Lịch sử view/scan/booked (type: `view`\|`scan`\|`booked`) |
+| `qrcode_generated` | Business Cards | Physical NFC card serials (code, business_id, user_id) |
+| `appointment_deatails` | Appointments | Lịch hẹn (typo trong tên bảng — giữ nguyên) |
+| `contact_requets` | Business Cards | Yêu cầu kết nối (typo — giữ nguyên): status `requested`\|`approved`\|`rejected` |
 | `user_activities` | Activities | Bài đăng (Pending/Approved/Rejected) |
 | `notifications` | Notifications | Lịch sử push notification (UUID PK) |
 | `email_templates` | Email | Template header (name, from, created_by) |
@@ -325,8 +379,10 @@ REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 REDIS_PASSWORD=null
 
-# Firebase (FCM Push Notification)
+# Firebase (FCM Push Notification + Dynamic Links)
 FIREBASE_CREDENTIALS=your-firebase-adminsdk-credentials.json
+FIREBASE_API_KEY=AIzaSy...                # Firebase Web API Key (cho Dynamic Links)
+APP_ENV=staging                           # staging | development | production (ảnh hưởng Firebase bundle ID)
 
 # GetStream (Social Feed)
 GETSTREAM_API_KEY=your_api_key
@@ -402,6 +458,8 @@ npm test -- --coverage
 
 | Module | Test file | Tests |
 |---|---|---|
+| Business Cards Service | `businesses/__tests__/businesses.service.spec.ts` | 32 |
+| Appointments Service | `appointments/__tests__/appointments.service.spec.ts` | 32 |
 | Email Service | `email/__tests__/email.service.spec.ts` | 26 |
 | Email Controller | `email/__tests__/email.controller.spec.ts` | 18 |
 | Notification Service | `notifications/__tests__/notification.service.spec.ts` | 8 |
@@ -416,6 +474,8 @@ npm test -- --coverage
 
 | Tài liệu | Mô tả |
 |---|---|
+| [Business Card API](./BUSINESS_API_REFERENCE.md) | Business cards — CRUD, QR generation, deeplink, track view/scan, Firebase Dynamic Link |
+| [Appointment API](./APPOINTMENT_API_REFERENCE.md) | Appointments — đặt lịch, accept/reject, FCM notification, Google Calendar sync |
 | [Email Module](https://github.com/devinapps/public-folder/blob/main/EMAIL_API.md) | Email — gửi email hàng loạt, quản lý template, filter recipients |
 | [Email Campaign UI](https://github.com/devinapps/public-folder/blob/main/EMAIL_CAMPAIGN_UI_REQUIREMENTS.md) | Email Campaign — UI requirements, wireframe, API mapping cho Next.js frontend |
 | [Activities Module](https://github.com/devinapps/public-folder/blob/main/NEWS_FEED_MANAGEMENT_API.md) | Activities — quản lý bài đăng, approval workflow, GetStream sync |

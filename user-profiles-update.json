@@ -1,0 +1,592 @@
+{
+  "info": {
+    "name": "InCard API — Business Cards & Appointments",
+    "description": "Postman collection cho các API endpoint của module Business Cards (/api/cards) và Appointments (/api/appointments).\n\nCách dùng:\n1. Import file này vào Postman\n2. Tạo Environment với biến:\n   - base_url: http://localhost:3001\n   - token: (JWT token lấy từ login)\n   - card_id: (ID của card sau khi tạo)\n   - appointment_id: (ID của appointment)\n3. Chạy theo thứ tự: Login → Cards → Appointments",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3001", "type": "string" },
+    { "key": "token",    "value": "YOUR_JWT_TOKEN_HERE",   "type": "string" },
+    { "key": "card_id",  "value": "1",                     "type": "string" },
+    { "key": "appointment_id", "value": "1",               "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "🔐 Auth",
+      "item": [
+        {
+          "name": "Login (lấy token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.data && json.data.access_token) {",
+                  "  pm.collectionVariables.set('token', json.data.access_token);",
+                  "  console.log('Token saved:', json.data.access_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept",       "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Đăng nhập để lấy JWT token. Script tự động lưu token vào collection variable."
+          }
+        }
+      ]
+    },
+    {
+      "name": "📇 Business Cards (/api/cards)",
+      "item": [
+        {
+          "name": "GET /api/cards — Danh sách cards",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/cards",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cards"]
+            },
+            "description": "Lấy danh sách tất cả business cards của user đang đăng nhập.\n\nPHP: CardController@index()\nQuery: WHERE (created_by=userId OR owner_id=userId)\nOrder: BY created_at DESC\n\nQuery params:\n- profiles_type: filter theo loại profile (optional, e.g. 'mobile', 'web')\n\nResponse:\n{\n  status: true,\n  data: [\n    {\n      id, slug, first_name, last_name, email, phone,\n      title (designation), company (sub_title), bio,\n      profile_url: \"APP_URL/profile/{slug}\",\n      profile_qr, contact_qr, deeplink, banner_img,\n      total_view, total_scan, total_appointment,\n      sociallinks, social_links,\n      testimonials,\n      industries: [{id, name}],\n      services: [{id, name}],\n      need_services: [{id, name}],\n      product_services, media,\n      settings (object),\n      password, enable_password,\n      is_my_card, owner_id, tags, profiles_type\n    }\n  ]\n}"
+          }
+        },
+        {
+          "name": "POST /api/cards — Tạo card mới",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.status && json.data && json.data.id) {",
+                  "  pm.collectionVariables.set('card_id', json.data.id);",
+                  "  console.log('Card ID saved:', json.data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Nguyen\",\n  \"last_name\": \"Van A\",\n  \"email\": \"nguyenvana@example.com\",\n  \"phone\": \"0901234567\",\n  \"bio\": \"Chuyên gia công nghệ với 10 năm kinh nghiệm\",\n  \"title\": \"Senior Software Engineer\",\n  \"company\": \"Tech Corp Vietnam\",\n  \"profiles_type\": \"mobile\",\n  \"main_service\": \"Software Development\",\n  \"key_strength\": \"Backend, Cloud Architecture\",\n  \"social_link\": {\n    \"Facebook\": \"https://facebook.com/nguyenvana\",\n    \"LinkedIn\": \"https://linkedin.com/in/nguyenvana\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/cards",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cards"]
+            },
+            "description": "Tạo business card mới.\n\nPHP: CardController@add()\n\nRequired fields:\n- first_name (→ businesses.title)\n- last_name  (→ businesses.last_name)\n\nOptional fields:\n- email, phone        → upsert vào contact_infos\n- bio, title (designation), company (sub_title)\n- industries, services, need_services (array JSON)\n- profiles_type, main_service, key_strength\n- looking_for, collaboration (JSON)\n- social_link: { 'Platform': 'url' } → upsert vào socials\n- qrcode_serial: string → link QR code\n\nSau khi tạo tự động set:\n- card_theme = { theme: 'theme5', order: {...} }\n- theme_color = 'color5-theme5'\n\nResponse (SUBSET — không có profile_qr, contact_qr, deeplink, banner_img, tags):\n{\n  status: true,\n  data: { id, slug, first_name, last_name, ... }\n}"
+          }
+        },
+        {
+          "name": "POST /api/cards — Tạo card (multipart/form-data với logo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "first_name", "value": "Tran",       "type": "text" },
+                { "key": "last_name",  "value": "Van B",      "type": "text" },
+                { "key": "email",      "value": "tranvanb@example.com", "type": "text" },
+                { "key": "phone",      "value": "0912345678", "type": "text" },
+                { "key": "bio",        "value": "Designer chuyên nghiệp", "type": "text" },
+                { "key": "title",      "value": "UI/UX Designer", "type": "text" },
+                { "key": "company",    "value": "Design Studio", "type": "text" },
+                { "key": "logo",       "value": "",            "type": "file", "src": "" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/cards",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cards"]
+            },
+            "description": "Tạo card với logo upload (multipart/form-data). Chọn file ảnh ở field 'logo'."
+          }
+        },
+        {
+          "name": "GET /api/cards/:id — Chi tiết card",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/cards/{{card_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cards", "{{card_id}}"]
+            },
+            "description": "Xem chi tiết 1 card. Mỗi lần xem ghi vào business_histories (type=view), recount total_view.\n\nPHP: CardController@detail()\n\nResponse đầy đủ hơn getAll — bao gồm cả:\n- hasPhysicalCard (từ qrcode_generated)\n- is_enable_appoinment\n- connected_id, connected_name\n- approved_at\n- banner_img (full URL)\n- tags"
+          }
+        },
+        {
+          "name": "GET /api/cards/:id?type=scan — Chi tiết card (quét QR)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/cards/{{card_id}}?type=scan",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cards", "{{card_id}}"],
+              "query": [
+                { "key": "type", "value": "scan", "description": "Truyền 'scan' để ghi thêm history type=scan và increment total_scan" }
+              ]
+            },
+            "description": "Xem chi tiết card qua quét QR code. Ghi cả view + scan vào history."
+          }
+        },
+        {
+          "name": "POST /api/cards/update/:id — Cập nhật card",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Nguyen\",\n  \"last_name\": \"Van A Updated\",\n  \"email\": \"updated@example.com\",\n  \"phone\": \"0901234999\",\n  \"bio\": \"Bio mới được cập nhật\",\n  \"title\": \"Tech Lead\",\n  \"company\": \"New Company Ltd\",\n  \"social_link\": {\n    \"Facebook\": \"https://facebook.com/updated\",\n    \"LinkedIn\": \"https://linkedin.com/in/updated\",\n    \"Twitter\": \"\"\n  },\n  \"settings\": {\n    \"show_email\": true,\n    \"show_phone\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/cards/update/{{card_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cards", "update", "{{card_id}}"]
+            },
+            "description": "Cập nhật thông tin card.\n\nPHP: CardController@update()\n\nLưu ý:\n- KHÔNG kiểm tra ownership (bất kỳ user đã login đều có thể update — PHP behavior)\n- Luôn overwrite card_theme=theme5, theme_color=color5-theme5\n- Tất cả fields đều optional\n- social_link: gửi value rỗng '' để xoá link\n\nResponse SUBSET — không có profile_qr, contact_qr, deeplink, banner_img, tags."
+          }
+        },
+        {
+          "name": "POST /api/cards/banner/:id — Cập nhật banner",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "banner_img", "value": "", "type": "file", "src": "" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/cards/banner/{{card_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cards", "banner", "{{card_id}}"]
+            },
+            "description": "Upload ảnh banner cho card.\n\nPHP: CardController@banner()\n\nRequired: field 'banner_img' (file ảnh)\n\nResponse:\n{\n  status: true,\n  data: { banner_img: 'https://...' }\n}"
+          }
+        },
+        {
+          "name": "POST /api/cards/link-card/:id — Liên kết thẻ vật lý",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"card_code\": \"NFC-ABC-12345\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/cards/link-card/{{card_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cards", "link-card", "{{card_id}}"]
+            },
+            "description": "Liên kết NFC card vật lý với business profile.\n\nPHP: CardController@linkCard()\n\nRequired:\n- card_code: serial number của thẻ NFC vật lý\n\nResponse:\n{\n  status: true,\n  data: { ... qrcode info ... }\n}"
+          }
+        },
+        {
+          "name": "DELETE /api/cards/:id — Xóa card",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/cards/{{card_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cards", "{{card_id}}"]
+            },
+            "description": "Xóa business card.\n\nPHP: CardController@delete()\n\nLưu ý:\n- CHỈ kiểm tra owner_id = userId (không kiểm tra created_by)\n- Xoá kèm: socials, unlink qrcode\n- Trả về error nếu user không phải owner_id\n\nResponse:\n{\n  status: true,\n  data: null,\n  message: 'Xóa danh thiếp thành công!'\n}"
+          }
+        },
+        {
+          "name": "POST /api/check-card/:cardCode — Kiểm tra serial thẻ",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/check-card/NFC-ABC-12345",
+              "host": ["{{base_url}}"],
+              "path": ["api", "check-card", "NFC-ABC-12345"]
+            },
+            "description": "Kiểm tra trạng thái của thẻ NFC trước khi liên kết.\n\nPHP: CardController@checkSerialNumberOfCard()\n⚠️ Method là POST (không phải GET) — PHP behavior\n\nStatus codes:\n- 1 = Has Profile — thẻ/slug đã có business profile\n- 2 = Card Available — thẻ tồn tại, chưa link business lẫn user\n- 3 = Owned By Another — thẻ đã link vào user khác (khác userId đang login)\n- 4 = Owner No Profile — thẻ thuộc về user này nhưng chưa có business\n- 5 = Has Account No Profile — (unauthenticated) thẻ có user nhưng không có business\n- 6 = Unknown — thẻ không tồn tại trong DB và không có slug tương ứng\n\nNote:\n- Nếu không tìm được QR record, tìm tiếp theo slug trong businesses\n- profileId = business.id nếu tìm được profile\n\nResponse:\n{\n  status: true,\n  data: { statusCode: 1, profileId: 5, statusText: 'Has Profile' }\n}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📅 Appointments (/api/appointments)",
+      "item": [
+        {
+          "name": "GET /api/appointments — Lịch hẹn nhận được",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/appointments",
+              "host": ["{{base_url}}"],
+              "path": ["api", "appointments"]
+            },
+            "description": "Xem danh sách lịch hẹn mà người dùng NHẬN ĐƯỢC (với tư cách chủ card).\n\nPHP: AppointmentsController@list() với requested=false\nQuery: WHERE created_by=userId AND user_requested IS NULL\n\nResponse:\n{\n  status: true,\n  data: [ { id, businessId, name, email, phone, date, time, note, title, status, business_name, ... } ]\n}"
+          }
+        },
+        {
+          "name": "GET /api/appointments?requested=1 — Lịch hẹn đã đặt",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/appointments?requested=1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "appointments"],
+              "query": [
+                { "key": "requested", "value": "1", "description": "1 hoặc 'true': xem lịch mình đã đặt cho người khác" }
+              ]
+            },
+            "description": "Xem danh sách lịch hẹn mà người dùng ĐÃ ĐẶT cho người khác.\n\nPHP: AppointmentsController@list() với requested=true\nQuery: WHERE user_requested=userId AND user_requested IS NOT NULL"
+          }
+        },
+        {
+          "name": "POST /api/appointments/add — Đặt lịch hẹn",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.status && json.data && json.data.appointment && json.data.appointment.id) {",
+                  "  pm.collectionVariables.set('appointment_id', json.data.appointment.id);",
+                  "  console.log('Appointment ID saved:', json.data.appointment.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"card_id\": {{card_id}},\n  \"name\": \"Tran Van B\",\n  \"email\": \"tranvanb@example.com\",\n  \"phone\": \"0912345678\",\n  \"date\": \"2026-04-15\",\n  \"time\": \"09:00\",\n  \"title\": \"Tư vấn hợp tác\",\n  \"note\": \"Muốn gặp để thảo luận về dự án mới\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/appointments/add",
+              "host": ["{{base_url}}"],
+              "path": ["api", "appointments", "add"]
+            },
+            "description": "Đặt lịch hẹn cho chủ card.\n\nPHP: AppointmentsController@add()\n\nRequired:\n- card_id: ID của business card (KHÔNG phải business_id)\n- name: tên người đặt\n\nOptional:\n- email, phone, date, time, title, note\n\nLogic:\n- created_by = business.owner_id ?? business.created_by (chủ card)\n- user_requested = auth userId (người đặt)\n- status = 'pending'\n- Tự động increment business.total_appointment\n- Gửi FCM notification đến chủ card\n\nResponse:\n{\n  status: true,\n  data: { appointment: { id, businessId, name, email, ... } }\n}"
+          }
+        },
+        {
+          "name": "GET /api/appointments/:id — Chi tiết lịch hẹn",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/appointments/{{appointment_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "appointments", "{{appointment_id}}"]
+            },
+            "description": "Xem chi tiết 1 lịch hẹn.\n\nPHP: AppointmentsController@detail()\n\nChỉ trả về nếu created_by = userId (chủ card mới xem được).\n\nResponse:\n{\n  status: true,\n  data: { id, businessId, name, email, phone, date, time, note, title, status, ... }\n}"
+          }
+        },
+        {
+          "name": "POST /api/appointments/update/:id — Cập nhật lịch hẹn",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Tran Van B Updated\",\n  \"email\": \"updated@example.com\",\n  \"phone\": \"0999999999\",\n  \"date\": \"2026-04-20\",\n  \"time\": \"14:00\",\n  \"title\": \"Họp triển khai\",\n  \"note\": \"Địa điểm: văn phòng tầng 3\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/appointments/update/{{appointment_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "appointments", "update", "{{appointment_id}}"]
+            },
+            "description": "Cập nhật thông tin lịch hẹn.\n\nPHP: AppointmentsController@update()\n\nChỉ cho phép nếu created_by = userId (chủ card).\nCập nhật được 7 fields: name, email, phone, date, time, title, note\n\nResponse:\n{\n  status: true,\n  data: { appointment: { id, ..., status: 'pending', ... } }\n}"
+          }
+        },
+        {
+          "name": "POST /api/appointments/accept/:id — Chấp nhận lịch hẹn",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/appointments/accept/{{appointment_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "appointments", "accept", "{{appointment_id}}"]
+            },
+            "description": "Chủ card chấp nhận lịch hẹn.\n\nPHP: AppointmentsController@accept()\n\nLogic:\n- Set status = 'accepted'\n- Gửi FCM notification đến user_requested\n- Xóa notifications liên quan (WHERE type LIKE '%Appointment%')\n- Chỉ cho phép nếu created_by = userId\n\nResponse:\n{\n  status: true,\n  data: { appointment: { id, ..., status: 'accepted', ... } }\n}"
+          }
+        },
+        {
+          "name": "POST /api/appointments/reject/:id — Từ chối lịch hẹn",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/appointments/reject/{{appointment_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "appointments", "reject", "{{appointment_id}}"]
+            },
+            "description": "Chủ card từ chối lịch hẹn.\n\nPHP: AppointmentsController@reject()\n\nLogic:\n- Set status = 'rejected'\n- Gửi FCM notification 'hủy lịch hẹn' đến user_requested\n- Xóa notifications liên quan\n- Chỉ cho phép nếu created_by = userId\n\nResponse:\n{\n  status: true,\n  data: { appointment: { id, ..., status: 'rejected', ... } }\n}"
+          }
+        },
+        {
+          "name": "POST /api/appointments/delete/:id — Xóa lịch hẹn",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/appointments/delete/{{appointment_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "appointments", "delete", "{{appointment_id}}"]
+            },
+            "description": "Xóa lịch hẹn.\n\nPHP: AppointmentsController@delete() — dùng POST (không phải DELETE method)\n\nLogic:\n- Chỉ cho phép nếu created_by = userId\n- Sau khi xóa: decrement business.total_appointment\n\nResponse:\n{\n  status: true,\n  data: null,\n  message: 'Xóa lịch hẹn thành công!'\n}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🌐 Public Appointments (No Auth — Google Calendar)",
+      "item": [
+        {
+          "name": "POST /api/public-appointments/add — Tạo từ Google Calendar",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept",       "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": 10,\n  \"google_calendar_id\": \"abc123_google_event_id\",\n  \"date\": \"2026-04-15\",\n  \"time\": \"10:00\",\n  \"title\": \"Google Calendar Event\",\n  \"note\": \"Tạo tự động từ Google Calendar\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/public-appointments/add",
+              "host": ["{{base_url}}"],
+              "path": ["api", "public-appointments", "add"]
+            },
+            "description": "Tạo appointment từ Google Calendar sync (không cần auth).\n\nPHP: AppointmentsController (public) → addPublic()\n\nRequired:\n- user_id: ID người dùng\n- google_calendar_id: ID event trong Google Calendar\n\nLưu ý:\n- status = 'accepted' (tự động chấp nhận — PHP behavior)\n- Không có business_id — chỉ map vào user\n\nResponse:\n{\n  status: true,\n  data: { appointment: { id, status: 'accepted', googleCalendarId, ... } }\n}"
+          }
+        },
+        {
+          "name": "POST /api/public-appointments/update — Cập nhật từ Google Calendar",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept",       "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": 10,\n  \"google_calendar_id\": \"abc123_google_event_id\",\n  \"date\": \"2026-04-20\",\n  \"time\": \"11:00\",\n  \"note\": \"Đã cập nhật từ Google Calendar\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/public-appointments/update",
+              "host": ["{{base_url}}"],
+              "path": ["api", "public-appointments", "update"]
+            },
+            "description": "Cập nhật appointment từ Google Calendar sync.\n\nPHP: AppointmentsController (public) → updatePublic()\n\nRequired:\n- user_id + google_calendar_id (dùng để tìm bản ghi)\n\nLưu ý:\n- status được set = 'pending' (PHP updatePublic behavior)\n\nResponse:\n{\n  status: true,\n  data: { appointment: { id, ..., status: 'pending', ... } }\n}"
+          }
+        },
+        {
+          "name": "POST /api/public-appointments/delete — Xóa từ Google Calendar",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept",       "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": 10,\n  \"google_calendar_id\": \"abc123_google_event_id\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/public-appointments/delete",
+              "host": ["{{base_url}}"],
+              "path": ["api", "public-appointments", "delete"]
+            },
+            "description": "Xóa appointment từ Google Calendar sync.\n\nPHP: AppointmentsController (public) → deletePublic()\n\nRequired:\n- user_id + google_calendar_id (dùng để tìm và xóa)\n\nResponse:\n{\n  status: true,\n  data: null\n}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔁 Error Scenarios (kiểm tra lỗi)",
+      "item": [
+        {
+          "name": "GET /api/cards — Không có token (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/cards",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cards"]
+            },
+            "description": "Gọi không có Bearer token → expect 401 Unauthorized"
+          }
+        },
+        {
+          "name": "POST /api/cards — Thiếu first_name (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"last_name\": \"Van A\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/cards",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cards"]
+            },
+            "description": "Thiếu required field first_name → expect 400 BadRequest"
+          }
+        },
+        {
+          "name": "DELETE /api/cards/:id — Không phải owner (lỗi)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/cards/9999",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cards", "9999"]
+            },
+            "description": "Xóa card không thuộc về user → expect { status: false, message: 'Thẻ không hợp lệ' }"
+          }
+        },
+        {
+          "name": "POST /api/appointments/add — Thiếu card_id (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nguyen Van A\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/appointments/add",
+              "host": ["{{base_url}}"],
+              "path": ["api", "appointments", "add"]
+            },
+            "description": "Thiếu required field card_id → expect 400 BadRequest"
+          }
+        },
+        {
+          "name": "POST /api/appointments/accept/:id — Không phải chủ card (lỗi)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Accept",        "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/appointments/accept/9999",
+              "host": ["{{base_url}}"],
+              "path": ["api", "appointments", "accept", "9999"]
+            },
+            "description": "Accept lịch hẹn không thuộc về user → expect { status: false, message: 'Lich hen khong ton tai.' }"
+          }
+        }
+      ]
+    }
+  ]
+}
