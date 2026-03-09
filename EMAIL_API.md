@@ -168,7 +168,7 @@ POST /api/emails/send
 
 ```json
 {
-  "success": true,
+  "status": true,
   "message": "Gửi email hoàn tất: 98/100 thành công",
   "data": {
     "total": 100,
@@ -334,7 +334,8 @@ GET /api/emails/templates
 
 ```json
 {
-  "success": true,
+  "status": true,
+  "message": "OK",
   "data": [
     {
       "id": 2,
@@ -386,7 +387,8 @@ GET /api/emails/templates/:id
 
 ```json
 {
-  "success": true,
+  "status": true,
+  "message": "OK",
   "data": {
     "id": 1,
     "name": "Welcome Email",
@@ -475,7 +477,8 @@ POST /api/emails/templates
 
 ```json
 {
-  "success": true,
+  "status": true,
+  "message": "OK",
   "data": {
     "id": 5,
     "name": "Welcome Email",
@@ -544,7 +547,8 @@ PUT /api/emails/templates/:id
 
 ```json
 {
-  "success": true,
+  "status": true,
+  "message": "OK",
   "data": {
     "id": 1,
     "name": "Welcome Email v2",
@@ -587,8 +591,9 @@ DELETE /api/emails/templates/:id
 
 ```json
 {
-  "success": true,
-  "message": "Xóa template thành công"
+  "status": true,
+  "message": "Xóa template thành công",
+  "data": null
 }
 ```
 
@@ -950,7 +955,7 @@ Xem trước email đã render variables cho 1 user.
     "total": 3,
     "success": 3,
     "failed": 0,
-    "campaignId": 42
+    "campaign_id": 42
   }
 }
 ```

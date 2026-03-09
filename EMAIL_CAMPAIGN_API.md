@@ -125,19 +125,19 @@ Request body hỗ trợ thêm 2 field (optional):
 
 ```json
 {
-  "success": true,
+  "status": true,
   "message": "Gửi email hoàn tất: 98/100 thành công",
   "data": {
     "total": 100,
     "success": 98,
     "failed": 2,
     "failed_emails": ["err1@example.com", "err2@example.com"],
-    "campaignId": 42
+    "campaign_id": 42
   }
 }
 ```
 
-**New field:** `campaignId` — ID campaign vừa tạo (dùng để track open/click ở Phase B)
+**New field:** `campaign_id` — ID campaign vừa tạo (dùng để track open/click ở Phase B)
 
 #### Auto-created Campaign Record
 
@@ -149,8 +149,8 @@ Database (email_campaigns table):
 ├── total: 100
 ├── success: 98
 ├── failed: 2
-├── openCount: 0 (Phase B tracks this)
-├── clickCount: 0 (Phase B tracks this)
+├── open_count: 0 (Phase B tracks this)
+├── click_count: 0 (Phase B tracks this)
 └── created_at: 2026-03-09T10:30:00Z
 ```
 
@@ -200,22 +200,23 @@ GET /api/emails/campaigns?page=1&limit=20&status=sent
 
 ```json
 {
-  "success": true,
+  "status": true,
+  "message": "OK",
   "data": {
-    "items": [
+    "campaigns": [
       {
         "id": 42,
         "name": "Newsletter - 2026-03-09",
-        "templateId": 3,
-        "templateName": "Newsletter Template",
+        "template_id": 3,
+        "template_name": "Newsletter Template",
         "lang": "vi",
-        "recipientMode": "filter",
+        "recipient_mode": "filter",
         "subject": "March Newsletter",
         "total": 100,
         "success": 98,
         "failed": 2,
-        "openCount": 45,
-        "clickCount": 12,
+        "open_count": 45,
+        "click_count": 12,
         "status": "sent",
         "created_at": "2026-03-09T10:30:00Z",
         "updated_at": "2026-03-09T10:35:00Z"
@@ -225,7 +226,7 @@ GET /api/emails/campaigns?page=1&limit=20&status=sent
       "total": 150,
       "page": 1,
       "limit": 20,
-      "total_pages": 8
+      "pages": 8
     }
   }
 }
@@ -253,21 +254,22 @@ GET /api/emails/campaigns/:id
 
 ```json
 {
-  "success": true,
+  "status": true,
+  "message": "OK",
   "data": {
     "id": 42,
     "name": "Newsletter - Q1 2026",
-    "templateId": 3,
-    "templateName": "Newsletter Template",
+    "template_id": 3,
+    "template_name": "Newsletter Template",
     "lang": "vi",
-    "recipientMode": "filter",
+    "recipient_mode": "filter",
     "subject": "March Newsletter",
     "total": 100,
     "success": 98,
     "failed": 2,
-    "failedEmails": ["err1@example.com", "err2@example.com"],
-    "openCount": 45,
-    "clickCount": 12,
+    "failed_emails": ["err1@example.com", "err2@example.com"],
+    "open_count": 45,
+    "click_count": 12,
     "status": "sent",
     "scheduled_at": null,
     "created_at": "2026-03-09T10:30:00Z",
@@ -292,21 +294,20 @@ GET /api/emails/campaigns/:id/unsubscribers?page=1&limit=50
 
 ```json
 {
-  "success": true,
+  "status": true,
+  "message": "OK",
   "data": {
-    "items": [
+    "unsubscribes": [
       {
         "email": "unsubbed@example.com",
-        "reason": "Too many emails",
-        "source": "link",
-        "unsubscribedAt": "2026-03-08T15:20:00Z"
+        "unsubscribed_at": "2026-03-08T15:20:00Z"
       }
     ],
     "pagination": {
       "total": 5,
       "page": 1,
       "limit": 50,
-      "total_pages": 1
+      "pages": 1
     }
   }
 }
@@ -328,9 +329,10 @@ GET /api/emails/campaigns/filter/status/scheduled?page=1&limit=10
 
 ```json
 {
-  "success": true,
+  "status": true,
+  "message": "OK",
   "data": {
-    "items": [
+    "campaigns": [
       {
         "id": 50,
         "name": "Scheduled Campaign",
@@ -346,7 +348,7 @@ GET /api/emails/campaigns/filter/status/scheduled?page=1&limit=10
       "total": 3,
       "page": 1,
       "limit": 10,
-      "total_pages": 1
+      "pages": 1
     }
   }
 }
@@ -406,11 +408,11 @@ GET /api/emails/unsubscribes?email=example&from=2026-02-01&to=2026-03-31&page=1&
     "unsubscribes": [
       {
         "email": "user1@example.com",
-        "unsubscribedAt": "2026-03-09T10:30:00.000Z"
+        "unsubscribed_at": "2026-03-09T10:30:00.000Z"
       },
       {
         "email": "user2@example.com",
-        "unsubscribedAt": "2026-03-08T15:20:00.000Z"
+        "unsubscribed_at": "2026-03-08T15:20:00.000Z"
       }
     ],
     "pagination": {
@@ -614,7 +616,8 @@ GET /api/emails/tracking/stats?campaign_id=42
 
 ```json
 {
-  "success": true,
+  "status": true,
+  "message": "OK",
   "data": {
     "campaign_id": 42,
     "total_sent": 100,
@@ -689,7 +692,8 @@ Kết hợp `SendEmailDto` (xem [EMAIL_API.md](EMAIL_API.md#send-bulk-email)) + 
 
 ```json
 {
-  "success": true,
+  "status": true,
+  "message": "OK",
   "data": {
     "id": 50,
     "status": "scheduled",
@@ -735,7 +739,8 @@ DELETE /api/emails/schedule/:id
 
 ```json
 {
-  "success": true,
+  "status": true,
+  "message": "OK",
   "data": {
     "id": 50,
     "status": "cancelled"
