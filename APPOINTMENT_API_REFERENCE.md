@@ -1,8 +1,8 @@
 # Appointment API Reference
 
-**Last updated:** 2026-03-04
+**Last updated:** 2026-03-05
 **Base URL:** `{APP_URL}/api`
-**Auth:** `Authorization: Bearer <jwt_token>` (trừ public-appointments)
+**Auth:** `Authorization: Bearer <jwt_token>` (trừ `/api/public-appointments/*`)
 
 ---
 
@@ -122,7 +122,7 @@ Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "card_id": 42,           (required) — business card ID
+  "card_id": 42,           (required) — business card ID (không phải business_id)
   "name": "Nguyen Van A",  (required)
   "email": "a@gmail.com",  (optional)
   "phone": "0901234567",   (optional)
@@ -137,7 +137,7 @@ Content-Type: application/json
 ```json
 {
   "status": true,
-  "message": "Tao lich hen thanh cong!",
+  "message": "Tạo lịch hẹn thành công!",
   "data": {
     "appointment": {
       "id": 1,
@@ -160,7 +160,7 @@ Content-Type: application/json
 }
 ```
 
-**Response (error):**
+**Response (error — card không tồn tại):**
 ```json
 {
   "status": false,
@@ -227,7 +227,7 @@ Authorization: Bearer <token>
 
 ## 4. POST `/api/appointments/update/:id`
 
-**Mô tả:** Cập nhật thông tin lịch hẹn. Chỉ chủ card mới được cập nhật.
+**Mô tả:** Cập nhật thông tin lịch hẹn. Chỉ chủ card mới được cập nhật. **Dùng POST, không phải PUT** (PHP behavior).
 
 **Request:**
 ```
@@ -250,7 +250,7 @@ Content-Type: application/json
 ```json
 {
   "status": true,
-  "message": "Cap nhat lich hen thanh cong!",
+  "message": "Cập nhật lịch hẹn thành công!",
   "data": {
     "appointment": {
       "id": 1,
@@ -291,12 +291,12 @@ Authorization: Bearer <token>
 ```json
 {
   "status": true,
-  "message": "Cap nhat lich hen thanh cong!",
+  "message": "Cập nhật lịch hẹn thành công!",
   "data": {
     "appointment": {
       "id": 1,
       "status": "accepted",
-      ...
+      "..."  : "..."
     }
   }
 }
@@ -323,12 +323,12 @@ Authorization: Bearer <token>
 ```json
 {
   "status": true,
-  "message": "Cap nhat lich hen thanh cong!",
+  "message": "Cập nhật lịch hẹn thành công!",
   "data": {
     "appointment": {
       "id": 1,
       "status": "rejected",
-      ...
+      "..."  : "..."
     }
   }
 }
@@ -355,7 +355,7 @@ Authorization: Bearer <token>
 ```json
 {
   "status": true,
-  "message": "Xoa lich hen thanh cong!",
+  "message": "Xóa lịch hẹn thành công!",
   "data": null
 }
 ```
@@ -380,8 +380,8 @@ Content-Type: application/json
   "google_calendar_id": "gcal_event_id", (required)
   "date": "2026-03-10",                  (optional)
   "time": "09:00",                       (optional)
-  "title": "Google Calendar event",       (optional)
-  "note": "Ghi chú"                       (optional)
+  "title": "Google Calendar event",      (optional)
+  "note": "Ghi chú"                      (optional)
 }
 ```
 
@@ -446,7 +446,7 @@ Content-Type: application/json
     "appointment": {
       "id": 10,
       "status": "pending",
-      ...
+      "..."  : "..."
     }
   }
 }
@@ -527,7 +527,7 @@ Content-Type: application/json
 | `created_at` format | `"2026 03 03 14:27:14"` | `"2026 03 03 14:27:14"` | ✅ Đúng |
 | `business_name` trong list | ✅ Có | ✅ Có | ✅ Đúng |
 | `status` initial value | `"pending"` | `"pending"` | ✅ Đúng |
-| `created_by` | `business.owner_id` | `business.owner_id` | ✅ Đúng |
+| `created_by` | `business.owner_id ?? business.created_by` | Giống | ✅ Đúng |
 | `user_requested` | userId đặt lịch | userId đặt lịch | ✅ Đúng |
 | FCM notification khi add | ✅ Có | ✅ Có | ✅ Đúng |
 | FCM notification khi accept/reject | ✅ Có | ✅ Có | ✅ Đúng |
@@ -535,3 +535,6 @@ Content-Type: application/json
 | total_appointment decrement khi delete | ✅ Có (`GREATEST(0,...)`) | ✅ Có | ✅ Đúng |
 | Table name | `appointment_deatails` (typo giữ nguyên) | `appointment_deatails` | ✅ Đúng |
 | Public endpoints status | `add`=`accepted`, `update`=`pending` | Giống | ✅ Đúng |
+| Message tạo lịch | `"Tạo lịch hẹn thành công!"` | Giống (có dấu) | ✅ Đúng |
+| Message cập nhật lịch | `"Cập nhật lịch hẹn thành công!"` | Giống (có dấu) | ✅ Đúng |
+| Message xóa lịch | `"Xóa lịch hẹn thành công!"` | Giống (có dấu) | ✅ Đúng |

@@ -4,7 +4,7 @@
 **Database:** MySQL 8 (TypeORM + Drizzle ORM)
 **Port mặc định:** `3001`
 **Global prefix:** `/api`
-**Last Updated:** 2026-03-04
+**Last Updated:** 2026-03-05
 
 ---
 
@@ -140,12 +140,14 @@ Quản lý toàn bộ vòng đời business card (danh thiếp số) của user:
 **Tính năng nổi bật:**
 - CRUD business card với logo upload (multipart)
 - **QR PNG on-demand:** `profile_qr` (500×500, encode profile URL) và `contact_qr` (800×800, encode vCard VCF) được generate khi `GET /api/cards` hoặc `GET /api/cards/:id`, file lưu tại `storage/app/public/{type}/{slug}.png`
-- **Track view/scan:** Mỗi lần xem `GET /api/cards/:id` ghi `business_history` type `view` + increment `total_view`. Nếu `?type=scan` thì ghi thêm type `scan` + increment `total_scan`
-- **Link NFC card:** Gắn physical QR card (serial code) vào business card, reset `deep_link` để force regenerate QR
+- **Track view/scan:** Mỗi lần xem `GET /api/cards/:id` ghi `business_history` type `view` + increment `total_view`. Nếu `?fromScan=1` thì ghi thêm type `scan` + increment `total_scan` + tạo `contact_requets` type `recent` nếu scan card người khác
+- **Link NFC card:** Gắn physical QR card (serial code) vào business card, reset `deep_link` để force regenerate QR. Fallback: tự động link physical card khi tạo card mới
 - **Firebase Dynamic Link:** `POST /api/cards/:id/generate-deeplink` tạo short URL qua Firebase API, lưu vào `deep_link_firebase` — dùng để redirect vào mobile app
 - **Public profile:** `GET /api/businesses/public/:slug` cho FE Web, không cần auth, tự track view/scan, trả `deep_link_firebase`
+- **Check card (public):** `POST /api/check-card/:cardCode` — public, không cần auth, kiểm tra trạng thái NFC serial trước khi link
+- **Card webhook:** Sau create/update/delete gọi `CARD_WEBHOOK_URL` (fire and forget) để trigger AI embedding
 
-**Controllers:** `BusinessesController` (`/api/cards`), `CheckCardController` (`/api/check-card`), `BusinessesPublicController` (`/api/businesses`)
+**Controllers:** `BusinessesController` (`/api/cards`), `CheckCardController` (`/api/check-card` — public), `BusinessesPublicController` (`/api/businesses`)
 
 **Static files:** `storage/app/public/` được serve tại `/storage` prefix
 
@@ -226,15 +228,56 @@ Bài đăng được duyệt
 
 **Path:** `src/modules/email/`
 
-Gửi email hàng loạt qua **Nodemailer + SMTP**, với hệ thống template đa ngôn ngữ dùng chung DB với `incard-biz`.
+Gửi email hàng loạt qua **Nodemailer + SMTP**, với hệ thống **campaign tracking (Phase A/B), unsubscribe management, và scheduled sending (Phase C)** — dùng chung DB template với `incard-biz`.
 
 **Tính năng:**
-- Gửi đến tất cả user hoặc lọc theo: user ID, email, loại tài khoản, ngày đăng ký
-- Nội dung: nhập tay tự do, hoặc lấy từ template có sẵn (VI/EN), hoặc kết hợp (override subject/body)
-- CRUD template: `email_templates` + `email_template_langs` (bảng chung với incard-biz)
-- Trả về kết quả chi tiết: `{ total, success, failed, failed_emails[] }`
+- **Phase A** — Campaign History & Unsubscribe:
+  - Auto-create campaign record + thống kê (total, success, failed, open_count, click_count)
+  - ✅ **Custom campaign name** (hoặc fallback `"Email Campaign - YYYY-MM-DD"`)
+  - HMAC-SHA256 unsubscribe tokens + stateless verification
+  - Auto-inject GDPR unsubscribe footer vào email
+  - Blacklist filtering (skip unsubscribed emails)
 
-**Endpoints:** `POST /api/emails/send`, CRUD `/api/emails/templates/*`
+- **Phase B** — Email Tracking:
+  - Open tracking via transparent 1×1 GIF pixel
+  - Click tracking via transparent redirect
+  - Deduplication (1 open/email, multiple clicks allowed)
+  - Analytics endpoint: open_rate, click_rate, top URLs
+
+- **Phase C** — Email Scheduling:
+  - Schedule campaigns cho thời điểm tương lai (Bull Queue + Redis)
+  - Idempotent execution (atomic status check, email không gửi 2 lần)
+  - Cancel anytime (trước khi thực thi)
+  - Startup reconciliation (auto re-queue nếu Redis restart)
+
+- **✅ Image Support**:
+  - Inject ảnh từ URL (public CDN)
+  - Auto-inject vào body trước `</body>` tag
+  - 100% compatible (mọi email client support)
+  - Hỗ trợ cả scheduled campaigns
+
+- **Phase F** — Analytics Dashboard (NEW):
+  - Single endpoint: `GET /api/emails/analytics/dashboard`
+  - 6 metrics: subscribers, campaigns_sent, emails_sent, open_rate, click_rate, bounce_rate
+  - Optional date filtering (ISO 8601)
+  - Realtime aggregation từ campaign records
+
+- **Phase G** — Template Personalization (NEW):
+  - Dynamic variables: `{{user.name}}`, `{{user.plan}}`, `{{user.subscription}}`, `{{user.email}}`, `{{user.first_name}}`, `{{unsubscribe_url}}`
+  - Preview endpoint: `POST /api/emails/preview`
+  - Personalization in send: mỗi recipient nhận custom content
+  - Batch-fetch optimization: 1 DB query cho 10,000 recipients (không N+1)
+  - Silent fallback: unknown variables → empty string
+
+**Gửi email:** Đến tất cả user hoặc lọc theo user ID, email, loại tài khoản, ngày đăng ký
+**Template:** CRUD `email_templates` + `email_template_langs` (VI/EN) + variables
+**Personalization:** Variables automatically resolved per recipient
+**Analytics:** 6 metrics aggregate từ campaign history
+**Images:** URL images (inject trực tiếp, best practice)
+
+**Endpoints:** `POST /api/emails/send`, `POST /api/emails/preview` (Phase G), `GET /api/emails/analytics/dashboard` (Phase F), CRUD `/api/emails/templates/*`, `POST /api/emails/schedule`, `DELETE /api/emails/schedule/:id`, `GET /api/emails/campaigns/*`, `GET /api/emails/tracking/*`, `GET /api/unsubscribe/*`
+
+**Tài liệu chi tiết:** [EMAIL_CAMPAIGN_API.md](./EMAIL_CAMPAIGN_API.md) (Phase A/B/C) | [EMAIL_API.md](./EMAIL_API.md) (Phase F/G + basic send) | [PHASE_F_G_ENDPOINTS.json](./PHASE_F_G_ENDPOINTS.json) (API spec) | [PHASE_F_G_POSTMAN.json](./PHASE_F_G_POSTMAN.json) (Ready-to-import)
 
 ---
 
@@ -334,7 +377,7 @@ Dùng chung MySQL database với `incard-biz`. Không dùng `synchronize: true` 
 | Bảng | Module | Mô tả |
 |---|---|---|
 | `users` | Users | User accounts, device_token, lang, notification_num |
-| `businesses` | Business Cards | Business cards — title, slug, deep_link, deep_link_firebase, total_view/scan/appointment |
+| `businesses` | Business Cards | Business cards — title, slug, deep_link, deep_link_firebase, total_view/scan/appointment, password, enable_password |
 | `contact_infos` | Business Cards | Email, phone, Whatsapp của mỗi card (JSON content) |
 | `social` | Business Cards | Social links của card (JSON: `[{"Platform":"url","id":0}]`) |
 | `services` | Business Cards | Product services và media của card (type: `service`\|`media`) |
@@ -396,6 +439,10 @@ MAIL_USERNAME=your_username
 MAIL_PASSWORD=your_password
 MAIL_FROM_ADDRESS=noreply@incard.vn
 MAIL_FROM_NAME=InCard
+
+# Business Cards
+APP_URL=https://stage.incard.biz          # Base URL cho profile_url, QR, banner
+CARD_WEBHOOK_URL=https://...              # Webhook sau create/update/delete card (AI embedding)
 
 # CORS
 CORS_ORIGIN=*
@@ -474,10 +521,14 @@ npm test -- --coverage
 
 | Tài liệu | Mô tả |
 |---|---|
-| [Business Card API](./BUSINESS_API_REFERENCE.md) | Business cards — CRUD, QR generation, deeplink, track view/scan, Firebase Dynamic Link |
-| [Appointment API](./APPOINTMENT_API_REFERENCE.md) | Appointments — đặt lịch, accept/reject, FCM notification, Google Calendar sync |
-| [Email Module](https://github.com/devinapps/public-folder/blob/main/EMAIL_API.md) | Email — gửi email hàng loạt, quản lý template, filter recipients |
+| [Business Card API](https://github.com/devinapps/public-folder/blob/main/BUSINESS_API_REFERENCE.md) | Business cards — CRUD, QR generation, deeplink, track view/scan, Firebase Dynamic Link |
+| [Appointment API](https://github.com/devinapps/public-folder/blob/main/APPOINTMENT_API_REFERENCE.md) | Appointments — đặt lịch, accept/reject, FCM notification, Google Calendar sync |
+| [Email API](./EMAIL_API.md) | Email — basic send + templates (send, CRUD templates) |
+| [Email Campaign API](./EMAIL_CAMPAIGN_API.md) | **⭐ NEW** — Campaign tracking (A), email tracking (B), scheduling (C) — tổng hợp Phase A/B/C |
 | [Email Campaign UI](https://github.com/devinapps/public-folder/blob/main/EMAIL_CAMPAIGN_UI_REQUIREMENTS.md) | Email Campaign — UI requirements, wireframe, API mapping cho Next.js frontend |
+| [Email Campaign Plan](./EMAIL_CAMPAIGN_PLAN.md) | Email Campaign — Detailed implementation plan + architecture (Phase A/B/C/D) |
+| [Phase C Implementation](./PHASE_C_IMPLEMENTATION_SUMMARY.md) | Phase C — Scheduling feature, idempotent design, startup reconciliation |
+| [Phase C Testing Guide](./PHASE_C_TESTING_GUIDE.md) | Phase C — 7 manual test scenarios với curl examples |
 | [Activities Module](https://github.com/devinapps/public-folder/blob/main/NEWS_FEED_MANAGEMENT_API.md) | Activities — quản lý bài đăng, approval workflow, GetStream sync |
 | [Notification Module](https://github.com/devinapps/public-folder/blob/main/FCM_NOTIFICATION_SYSTEM.md) | Notifications — push notification qua Firebase, Bull Queue architecture |
 | [Users Module](https://github.com/devinapps/public-folder/blob/main/USER_MANAGEMENT_API.md) | Users — CRUD user, impersonation, export, plan management |
@@ -487,6 +538,7 @@ npm test -- --coverage
 
 | File | Module |
 |---|---|
+| [./user-profiles-update.json](./user-profiles-update.json) | Business Cards & Appointments — CRUD, QR, NFC link, check-card, appointments |
 | [../InCard_Email_API.postman_collection.json](../InCard_Email_API.postman_collection.json) | Email API — send bulk email, template CRUD |
 
 ### Tài liệu ngoài

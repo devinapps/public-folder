@@ -5,6 +5,8 @@
 **Authentication:** JWT Bearer Token (Admin role required)
 **Last Updated:** 2026-02-24
 
+> **📧 New:** For **Email Campaign features** (campaign history, tracking, scheduling), see [EMAIL_CAMPAIGN_API.md](EMAIL_CAMPAIGN_API.md). This document covers basic email sending and template management only.
+
 ---
 
 ## Table of Contents
@@ -150,6 +152,10 @@ POST /api/emails/send
 | `lang` | `string` | Không | Ngôn ngữ template cần dùng (default: `"vi"`) |
 | `subject` | `string` | Có (*) | Tiêu đề email — bắt buộc nếu không có `template_id` |
 | `body` | `string` | Có (*) | Nội dung HTML — bắt buộc nếu không có `template_id` |
+| `campaign_name` | `string` | Không | Tên campaign tùy chỉnh. Nếu không cung cấp → fallback: `"Email Campaign - YYYY-MM-DD"` |
+| `include_unsubscribe_link` | `boolean` | Không | Tự động thêm unsubscribe footer (default: `true`) |
+| `redirect_url` | `string` | Không | URL cố định để redirect tất cả link trong email (vẫn tracking được click từng link) |
+| `url_images` | `array` | Không | Danh sách ảnh URL để inject vào body: `[{ filename: string, url: string }, ...]` — phải public URL |
 
 > **(\*)** Khi có `template_id`: `subject` và `body` là **optional** (dùng để override nội dung từ template).
 > Khi không có `template_id`: cả hai là **bắt buộc**.
@@ -254,6 +260,63 @@ POST /api/emails/send
   "created_to": "2024-12-31",
   "template_id": 3,
   "lang": "vi"
+}
+```
+
+**10. Gửi với campaign name tùy chỉnh:**
+```json
+{
+  "campaign_name": "Newsletter Tháng 3 - Khuyến mãi đặc biệt",
+  "subject": "Tin khuyến mãi",
+  "body": "<p>Khuyến mãi tháng 3...</p>"
+}
+```
+
+**11. Gửi với ảnh từ URL (logo + banner):**
+```json
+{
+  "subject": "Email với ảnh",
+  "body": "<p>Dưới đây là logo và banner:</p>",
+  "url_images": [
+    {
+      "filename": "logo.png",
+      "url": "https://cdn.example.com/logo.png"
+    },
+    {
+      "filename": "banner.jpg",
+      "url": "https://cdn.example.com/banner.jpg"
+    }
+  ]
+}
+```
+
+**12. Gửi campaign với ảnh + tên tùy chỉnh:**
+```json
+{
+  "campaign_name": "Newsletter Tháng 3 - Khuyến mãi đặc biệt",
+  "subject": "Email với ảnh",
+  "body": "<p>Khuyến mãi:</p>",
+  "url_images": [
+    {
+      "filename": "promo-banner.jpg",
+      "url": "https://cdn.incard.vn/promos/march-2026.jpg"
+    }
+  ],
+  "include_unsubscribe_link": true
+}
+```
+
+**13. Gửi ảnh động (versioning URL):**
+```json
+{
+  "subject": "Dynamic Banner",
+  "body": "<p>Custom banner per user:</p>",
+  "url_images": [
+    {
+      "filename": "user-banner.jpg",
+      "url": "https://api.example.com/banners/v1?user={{user_id}}&lang={{lang}}"
+    }
+  ]
 }
 ```
 
@@ -541,6 +604,113 @@ DELETE /api/emails/templates/:id
 
 ---
 
+## Campaign Name
+
+Mỗi lần gọi `POST /api/emails/send`, hệ thống tự động tạo **campaign record** để tracking:
+
+| Trường | Giá trị | Mô tả |
+|---|---|---|
+| `name` | User cung cấp hoặc fallback | Tên campaign lưu vào DB |
+| `status` | `sending` → `sent` | Trạng thái gửi |
+| `total` | Số lượng recipients | Tổng email được gửi |
+| `success` | Số thành công | Email gửi thành công |
+| `failed` | Số thất bại | Email lỗi, không gửi được |
+
+### Fallback Logic
+
+Nếu không cung cấp `campaign_name`, hệ thống sẽ fallback:
+
+```
+campaign_name = "Email Campaign - YYYY-MM-DD"
+```
+
+**Ví dụ:**
+- 2026-03-09 → `"Email Campaign - 2026-03-09"`
+- 2026-03-10 → `"Email Campaign - 2026-03-10"`
+
+### Tùy chỉnh Campaign Name
+
+Cung cấp `campaign_name` trong request để override fallback:
+
+```json
+{
+  "campaign_name": "Newsletter Tháng 3 - Khuyến mãi 50%",
+  "subject": "Khuyến mãi khủng",
+  "body": "..."
+}
+```
+
+**Kết quả:** Campaign record sẽ có `name = "Newsletter Tháng 3 - Khuyến mãi 50%"`
+
+---
+
+## Images Support
+
+Email API hỗ trợ chèn ảnh vào email qua **URL images** (best practice):
+
+### URL Images (Recommended)
+
+Cung cấp URL công khai của ảnh — API inject trực tiếp vào HTML **không download, không attachment**:
+
+```json
+{
+  "url_images": [
+    {
+      "filename": "banner.jpg",
+      "url": "https://cdn.example.com/banner.jpg"
+    },
+    {
+      "filename": "logo.png",
+      "url": "https://cdn.example.com/logo.png"
+    }
+  ]
+}
+```
+
+**Ưu điểm:**
+- ✅ **Email nhỏ gọn** — chỉ chứa URL reference, không phình to Base64
+- ✅ **Tương thích 100%** — mọi email client support (Gmail, Outlook, Apple Mail)
+- ✅ **Dễ update** — thay đổi ảnh mà không resend campaign
+- ✅ **Best practice** — Mailchimp, SendGrid, ConvertKit đều dùng cách này
+- ✅ **CDN-friendly** — ảnh từ CDN được cache tự động
+- ✅ **Analytics** — track image loads, referer logs
+
+**Nhược điểm:**
+- Ảnh phải public (accessible từ email client)
+- Nếu CDN down → email client không tải được ảnh
+
+### Image Injection & Display
+
+Flow xử lý ảnh:
+1. **Validate URL** — kiểm tra format (không fetch từ server)
+2. **Inject vào HTML** — tự động thêm `<img src="URL">` tag trước tag `</body>`
+3. **Email client fetch** — client sẽ download ảnh khi user xem email
+
+**HTML được tạo tự động:**
+```html
+<img src="https://cdn.example.com/banner.jpg" alt="banner.jpg" style="max-width: 100%; height: auto; margin: 10px 0;" />
+```
+
+> **Lưu ý:** Ảnh được inject **trước footer unsubscribe** (nếu có), **sau tracking pixel**. Thứ tự injection: unsubscribe footer → images → tracking pixel.
+
+### Best Practices
+
+| Tình huống | Khuyến nghị |
+|---|---|
+| Logo công ty, ảnh cố định | Lưu trên CDN, reuse URL (cache) |
+| Banner thay đổi theo campaign | Lưu trên CDN với versioning (e.g., `/v1/`, `/v2/`) |
+| Ảnh cá nhân hoá | Tạo dynamic URL (e.g., `/banner?user=123&lang=vi`) |
+| Performance | CDN gần user (CloudFlare, AWS CloudFront, ...) |
+
+### Requirements
+
+- **URL phải public**: Email client phải truy cập được từ internet
+- **HTTPS recommended**: Tránh "mixed content" warning
+- **No auth headers**: Email client không gửi auth credentials → URL phải public
+- **Timeout**: Email client có timeout, ảnh phải load < 5s
+
+---
+
 ## Recipient Filter Reference
 
 Bảng tóm tắt tất cả cách lọc recipient cho `POST /api/emails/send`:
@@ -666,3 +836,165 @@ src/modules/email/
     ├── email.service.spec.ts              # 26 unit tests cho EmailService
     └── email.controller.spec.ts          # 18 unit tests cho EmailController + Guards
 ```
+
+---
+
+## 📊 Phase F - Analytics Dashboard (NEW)
+
+**Endpoint:** `GET /api/emails/analytics/dashboard`
+
+Lấy tổng hợp 6 metrics cho email analytics dashboard. Dữ liệu aggregate từ `email_campaigns` table.
+
+### Query Parameters
+
+| Param | Type | Optional | Example |
+|-------|------|----------|---------|
+| `from` | ISO 8601 date | Yes | `2026-01-01` |
+| `to` | ISO 8601 date | Yes | `2026-03-31` |
+
+### Response
+
+```json
+{
+  "status": true,
+  "message": "Lấy thống kê thành công",
+  "data": {
+    "subscribers": 15000,
+    "campaigns_sent": 42,
+    "emails_sent": 14800,
+    "open_rate": "24.5",
+    "click_rate": "8.2",
+    "bounce_rate": "1.3",
+    "total_opens": 3626,
+    "total_clicks": 1214,
+    "total_failed": 200
+  }
+}
+```
+
+### Metrics Explanation
+
+| Metric | Definition | Formula |
+|--------|-----------|---------|
+| `subscribers` | Tổng email cố gắng gửi | SUM(total) |
+| `campaigns_sent` | Số campaigns đã gửi | COUNT(*) |
+| `emails_sent` | Email delivered successfully | SUM(success) |
+| `open_rate` (%) | Tỷ lệ mở email | (opens / emails_sent) × 100 |
+| `click_rate` (%) | Tỷ lệ click link | (clicks / emails_sent) × 100 |
+| `bounce_rate` (%) | Tỷ lệ email failed | (failed / subscribers) × 100 |
+
+### Examples
+
+```bash
+# All-time
+GET /api/emails/analytics/dashboard
+
+# Last 30 days
+GET /api/emails/analytics/dashboard?from=2026-02-07&to=2026-03-09
+
+# Specific month
+GET /api/emails/analytics/dashboard?from=2026-03-01&to=2026-03-31
+```
+
+---
+
+## 🚀 Phase G - Template Personalization (NEW)
+
+Hỗ trợ dynamic variables trong email content. Mỗi recipient nhận content tùy chỉnh theo data của họ.
+
+### Preview Email Endpoint
+
+**Endpoint:** `POST /api/emails/preview`
+
+Xem trước email đã render variables cho 1 user.
+
+```json
+{
+  "user_id": 123,
+  "subject": "Xin chào {{user.name}}",
+  "body": "<p>Gói: {{user.plan}}</p>"
+}
+```
+
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Xem trước email thành công",
+  "data": {
+    "subject": "Xin chào John Doe",
+    "body": "<p>Gói: Pro</p>"
+  }
+}
+```
+
+### Personalization in Send
+
+**Endpoint:** `POST /api/emails/send` (with variables)
+
+```json
+{
+  "user_ids": [1, 2, 3],
+  "subject": "Xin chào {{user.name}} - {{user.plan}} Plan",
+  "body": "<p>Công ty: {{user.subscription}}</p>",
+  "campaign_name": "Personalized Newsletter"
+}
+```
+
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Gửi email hoàn tất: 3/3 thành công",
+  "data": {
+    "total": 3,
+    "success": 3,
+    "failed": 0,
+    "campaignId": 42
+  }
+}
+```
+
+**Behavior per recipient:**
+- User #1 (name=John, plan=Pro) → "Xin chào John - Pro Plan"
+- User #2 (name=Jane, plan=Enterprise) → "Xin chào Jane - Enterprise Plan"
+- User #3 (name=Bob, plan=Basic) → "Xin chào Bob - Basic Plan"
+
+### Supported Variables
+
+| Variable | Source | Fallback |
+|----------|--------|----------|
+| `{{user.name}}` | users.name | `''` |
+| `{{user.first_name}}` | First word of name | `''` |
+| `{{user.email}}` | Recipient email | email |
+| `{{user.plan}}` | plans.name (JOINed) | `''` |
+| `{{user.subscription}}` | users.subscriptionName | `''` |
+| `{{unsubscribe_url}}` | HMAC token URL | `''` |
+
+### Performance Optimization
+
+**Batch-Fetch Strategy:**
+- 1 single DB query cho tất cả recipients (không N+1)
+- Query: `SELECT users LEFT JOIN plans WHERE email IN (...)`
+- Result: 10,000 recipients = 1 query + 10,000 variable replacements
+
+### Variable Resolution Rules
+
+1. **Unknown variables** → render as empty string (silent fallback)
+   - Input: `"Gói: {{unknown.var}}"`
+   - Output: `"Gói: "`
+
+2. **User not in DB** → all `user.*` variables → empty string
+   - Input: `"Email: {{user.email}}"` for email not in DB
+   - Output: `"Email: "`
+
+3. **Case-sensitive** → `{{user.name}}` ≠ `{{User.Name}}`
+
+---
+
+## See Also
+
+- [Email Campaign API](./EMAIL_CAMPAIGN_API.md) - Campaign history, tracking, scheduling
+- [Email Campaign Plan](./EMAIL_CAMPAIGN_PLAN.md) - Phase A-D implementation details
+- [Postman Collection](./PHASE_F_G_POSTMAN.json) - Ready-to-import API examples
+- [API Endpoints Reference](./PHASE_F_G_ENDPOINTS.json) - Full API specification

@@ -1,8 +1,8 @@
 # Business Card & QR API Reference
 
-**Last updated:** 2026-03-03
+**Last updated:** 2026-03-05
 **Base URL:** `{APP_URL}/api`
-**Auth:** `Authorization: Bearer <jwt_token>` (trừ endpoint public)
+**Auth:** `Authorization: Bearer <jwt_token>` (trừ endpoint public và check-card)
 
 ---
 
@@ -18,7 +18,7 @@
 | POST | `/api/cards/banner/:id` | ✅ JWT | Upload banner |
 | POST | `/api/cards/link-card/:id` | ✅ JWT | Gắn physical NFC card |
 | POST | `/api/cards/:id/generate-deeplink` | ✅ JWT | Generate Firebase Dynamic Link |
-| POST | `/api/check-card/:cardCode` | ✅ JWT | Kiểm tra mã serial NFC card |
+| POST | `/api/check-card/:cardCode` | ❌ Public (OptionalAuth) | Kiểm tra mã serial NFC card |
 | GET | `/api/businesses/public/:slug` | ❌ Public (OptionalAuth) | Profile công khai cho FE Web |
 
 ---
@@ -27,6 +27,12 @@
 
 **Mô tả:** Lấy danh sách tất cả business cards của user đang đăng nhập (owner hoặc created_by).
 
+**Query params:**
+
+| Param | Value | Mô tả |
+|-------|-------|-------|
+| `profiles_type` | `"mobile"` \| `"web"` \| ... | Filter theo loại profile (optional) |
+
 **Side effects:**
 - `generateProfileQr()`: Generate file PNG `storage/app/public/profile_qr/{slug}.png` nếu chưa tồn tại hoặc `deep_link` là null. Lưu `deep_link` vào DB.
 - `generateContactQr()`: Generate file PNG `storage/app/public/contact_qr/{slug}.png` nếu chưa tồn tại.
@@ -34,6 +40,7 @@
 **Request:**
 ```
 GET /api/cards
+GET /api/cards?profiles_type=mobile
 Authorization: Bearer <token>
 ```
 
@@ -53,10 +60,14 @@ Authorization: Bearer <token>
       "title": "CEO",
       "company": "Công ty ABC",
       "bio": "Giới thiệu bản thân",
-      "industries": ["Technology", "Finance"],
-      "services": ["Consulting", "Development"],
+      "industries": [{ "id": "0", "name": "Technology" }, { "id": "1", "name": "Finance" }],
+      "services": [{ "id": "0", "name": "Consulting" }],
       "need_services": [],
       "sociallinks": [
+        { "Facebook": "https://facebook.com/example", "id": 0 },
+        { "Zalo": "https://zalo.me/example", "id": 1 }
+      ],
+      "social_links": [
         { "Facebook": "https://facebook.com/example", "id": 0 },
         { "Zalo": "https://zalo.me/example", "id": 1 }
       ],
@@ -83,6 +94,8 @@ Authorization: Bearer <token>
       "deeplink": "http://localhost:3001/profile/nguyen-van-a",
       "banner_img": null,
       "settings": { "phone_enable": 1, "zalo_enable": 1, "whatsapp_enable": 1 },
+      "password": null,
+      "enable_password": 0,
       "tags": [],
       "owner_id": 13
     }
@@ -94,9 +107,10 @@ Authorization: Bearer <token>
 - `deeplink` = `business.deep_link` từ DB (auto-generated khi null). Nếu có physical card → `{APP_URL}/profile/{qrCode.code}`, nếu không → `{APP_URL}/profile/{slug}`.
 - `profile_url` **có** prefix `/profile/` (PHP `index()` behavior).
 - `request_status` hiện hardcode `"not_requested"` — PHP query từ `contact_requets` table (TODO).
-- `sociallinks` format: `[{ "PlatformName": "url", "id": 0 }]` — đúng PHP format.
-- `settings` là **object** đã được parse (NestJS cải tiến so với PHP trả raw string). Defaults: `{phone_enable:1, zalo_enable:1, whatsapp_enable:1}` merge với giá trị lưu trong DB.
-- `industries`, `services`, `need_services`: NestJS luôn trả `[{id, name}]` format — PHP lưu DB dạng `{"0":"name"}` và transform giống nhau.
+- `sociallinks` = `social_links`: cùng nội dung, format `[{ "PlatformName": "url", "id": 0 }]`.
+- `industries`, `services`, `need_services`: luôn trả `[{id, name}]` — PHP lưu DB dạng `{"0":"name"}` và transform.
+- `settings`: object đã parse. Defaults: `{phone_enable:1, zalo_enable:1, whatsapp_enable:1}` merge với giá trị DB.
+- `password`, `enable_password`: fields bảo vệ card bằng mật khẩu.
 
 ---
 
@@ -122,11 +136,11 @@ main_service: null              (optional)
 key_strength: null              (optional)
 looking_for: {...}              (optional, JSON)
 collaboration: {...}            (optional, JSON)
-industries: ["Tech"]            (optional, JSON array or string)
-services: ["Dev"]               (optional, JSON array or string)
-need_services: []               (optional, JSON array or string)
+industries: ["Tech"]            (optional, JSON array)
+services: ["Dev"]               (optional, JSON array)
+need_services: []               (optional, JSON array)
 social_link: {"Facebook":"url"} (optional, JSON object)
-qrcode_serial: "ABC123"        (optional)
+qrcode_serial: "ABC123"         (optional — link QR card ngay khi tạo)
 logo: <file>                    (optional, multipart)
 ```
 
@@ -145,8 +159,8 @@ logo: <file>                    (optional, multipart)
     "title": "CEO",
     "company": "Công ty ABC",
     "bio": "Giới thiệu",
-    "industries": ["Tech"],
-    "services": ["Dev"],
+    "industries": [{ "id": "0", "name": "Tech" }],
+    "services": [{ "id": "0", "name": "Dev" }],
     "need_services": [],
     "sociallinks": [{ "Facebook": "https://fb.com/x", "id": 0 }],
     "testimonials": [],
@@ -165,32 +179,47 @@ logo: <file>                    (optional, multipart)
     "looking_for": null,
     "collaboration": null,
     "product_services": [],
-    "media": []
+    "media": [],
+    "password": null,
+    "enable_password": null
   }
 }
 ```
 
+**Side effects:**
+- Auto set `card_theme = theme5`, `theme_color = color5-theme5`.
+- Nếu có `qrcode_serial`: link QR vào business ngay.
+- Fallback: nếu user có physical card chưa link → tự động link.
+- Gọi webhook `CARD_WEBHOOK_URL` (fire and forget) với `{card_id, type: "upsert"}`.
+
 **Notes so sánh PHP:**
 - `profile_url` **KHÔNG có** `/profile/` prefix — đúng PHP `add()` behavior.
-- **KHÔNG có** `profile_qr`, `contact_qr`, `deeplink`, `banner_img`, `tags`, `owner_id`, `is_my_card` — đúng PHP.
-- `created_at` / `updated_at` format `'YYYY MM DD HH:mm:ss'` — đã fix (trước đây null).
+- **KHÔNG có** `profile_qr`, `contact_qr`, `deeplink`, `banner_img`, `tags`, `owner_id`, `is_my_card`.
 
 ---
 
 ## 3. GET `/api/cards/:id`
 
-**Mô tả:** Chi tiết card. **Luôn track view**. Nếu `?type=scan` thì track thêm scan.
+**Mô tả:** Chi tiết card. **Luôn track view**. Nếu `?fromScan=1` thì track thêm scan.
+
+**Query params:**
+
+| Param | Value | Mô tả |
+|-------|-------|-------|
+| `fromScan` | `1` \| `true` | Track scan history (PHP behavior) |
+| `type` | `serial` | Lookup card theo QR serial code thay vì ID (PHP behavior) |
 
 **Side effects:**
 - Ghi record `business_history` type `view`.
 - `UPDATE businesses SET total_view = total_view + 1`.
-- Nếu `?type=scan`: ghi thêm `business_history` type `scan` + `total_scan++`.
+- Nếu `?fromScan=1`: ghi thêm `business_history` type `scan` + `total_scan++`.
+- Nếu `?fromScan=1` và user đang scan card của người khác: tạo `contact_requets` type `recent`.
 - `generateProfileQr()` + `generateContactQr()` như `GET /api/cards`.
 
 **Request:**
 ```
 GET /api/cards/1
-GET /api/cards/1?type=scan
+GET /api/cards/1?fromScan=1
 Authorization: Bearer <token>
 ```
 
@@ -209,10 +238,11 @@ Authorization: Bearer <token>
     "title": "CEO",
     "company": "Công ty ABC",
     "bio": "Giới thiệu",
-    "industries": ["Technology"],
-    "services": ["Consulting"],
+    "industries": [{ "id": "0", "name": "Technology" }],
+    "services": [{ "id": "0", "name": "Consulting" }],
     "need_services": [],
     "sociallinks": [{ "Facebook": "https://fb.com/x", "id": 0 }],
+    "social_links": [{ "Facebook": "https://fb.com/x", "id": 0 }],
     "testimonials": [],
     "testimonials_is_enabled": 1,
     "logo": "http://localhost:3001/storage/card_logo/logo_123.png",
@@ -234,6 +264,8 @@ Authorization: Bearer <token>
     "product_services": [],
     "media": [],
     "settings": { "phone_enable": 1, "zalo_enable": 1, "whatsapp_enable": 1 },
+    "password": null,
+    "enable_password": 0,
     "owner_id": 13,
     "tags": [],
     "connected_id": null,
@@ -248,6 +280,7 @@ Authorization: Bearer <token>
 ```
 
 **Notes so sánh PHP:**
+- `?fromScan=1` (không phải `?type=scan`) để track scan — đúng PHP behavior.
 - `total_view` / `total_scan`: lấy từ DB sau khi increment (reload).
 - `testimonials_is_enabled`: từ `testimonials.is_enabled` DB field.
 - `hasPhysicalCard`: `true` nếu có row trong `qrcode_generated` với `business_id = id`.
@@ -260,7 +293,7 @@ Authorization: Bearer <token>
 
 ## 4. POST `/api/cards/update/:id`
 
-**Mô tả:** Cập nhật card. **Không track view/scan.**
+**Mô tả:** Cập nhật card. **Không track view/scan. Không kiểm tra ownership** (PHP behavior — bất kỳ user login đều update được).
 
 **Request:**
 ```
@@ -280,13 +313,14 @@ main_service: "Dev"             (optional)
 key_strength: "Leadership"      (optional)
 looking_for: {...}              (optional, JSON)
 collaboration: {...}            (optional, JSON)
-category: ["Finance"]           (optional)
+industries: ["Finance"]         (optional — PHP field name; alias với category)
+category: ["Finance"]           (optional — legacy/internal alias)
 services: ["Consulting"]        (optional)
 need_services: []               (optional)
-social_link: {"Zalo": "url"}   (optional, JSON object)
+social_link: {"Zalo": "url"}   (optional, JSON object — gửi value "" để xóa link)
 settings: {...}                 (optional, JSON object)
-media: [...]                    (optional, JSON array)
-servicesInfo: [...]             (optional, JSON array)
+media: [...]                    (optional, JSON array — product media)
+servicesInfo: [...]             (optional, JSON array — product services)
 logo: <file>                    (optional, multipart)
 ```
 
@@ -305,8 +339,8 @@ logo: <file>                    (optional, multipart)
     "title": "CTO",
     "company": "Công ty XYZ",
     "bio": "Bio mới",
-    "industries": ["Finance"],
-    "services": ["Consulting"],
+    "industries": [{ "id": "0", "name": "Finance" }],
+    "services": [{ "id": "0", "name": "Consulting" }],
     "need_services": [],
     "sociallinks": [{ "Zalo": "url", "id": 0 }],
     "testimonials": [],
@@ -331,17 +365,21 @@ logo: <file>                    (optional, multipart)
 }
 ```
 
+**Side effects:**
+- Luôn overwrite `card_theme = theme5`, `theme_color = color5-theme5` (PHP behavior).
+- Reset `matching_data = null` (force AI re-embedding).
+- Gọi webhook `CARD_WEBHOOK_URL` với `{card_id, type: "upsert"}`.
+
 **Notes so sánh PHP:**
 - `profile_url` **KHÔNG có** `/profile/` prefix — đúng PHP `update()` behavior.
 - **KHÔNG có** `profile_qr`, `contact_qr`, `deeplink`, `banner_img`, `tags`, `owner_id`, `is_my_card`.
-- `settings` được save từ request, rồi merge với defaults khi trả về.
-- PHP luôn overwrite `card_theme` = `theme5`, `theme_color` = `color5-theme5`.
+- Field `industries` (PHP) được lưu vào DB column `category`. Cả `industries` lẫn `category` đều được chấp nhận.
 
 ---
 
 ## 5. DELETE `/api/cards/:id`
 
-**Mô tả:** Xóa card. Chỉ owner mới được xóa.
+**Mô tả:** Xóa card. Chỉ `owner_id = userId` mới được xóa (KHÔNG check `created_by` — PHP behavior).
 
 **Request:**
 ```
@@ -358,10 +396,21 @@ Authorization: Bearer <token>
 }
 ```
 
+**Response (không phải owner):**
+```json
+{
+  "status": false,
+  "message": "Thẻ không hợp lệ",
+  "data": null
+}
+```
+
 **Side effects:**
 - Xóa row trong `social` table.
 - Unlink `qrcode_generated` (set `business_id = null`).
+- Xóa tất cả `contact_requets` liên quan (`business_id = id`).
 - Xóa row trong `businesses` table.
+- Gọi webhook `CARD_WEBHOOK_URL` với `{card_id, type: "delete"}`.
 
 ---
 
@@ -384,7 +433,7 @@ banner_img: <file>    (required)
 ```json
 {
   "status": true,
-  "message": "",
+  "message": "Cập nhật thành công",
   "data": {
     "banner_img": "http://localhost:3001/storage/banner_img/banner_1.png"
   }
@@ -412,7 +461,7 @@ Content-Type: application/json
 ```json
 {
   "status": true,
-  "message": "",
+  "message": "Liên kết thành công.",
   "data": {
     "id": 5,
     "code": "ABC123XYZ",
@@ -427,11 +476,20 @@ Content-Type: application/json
 }
 ```
 
-**Response (error — không tìm thấy mã):**
+**Response (error — mã không tồn tại):**
 ```json
 {
   "status": false,
-  "message": "Mã thẻ không tồn tại",
+  "message": "Mã code không tồn tại",
+  "data": null
+}
+```
+
+**Response (error — QR đã được liên kết):**
+```json
+{
+  "status": false,
+  "message": "Thẻ đã được liên kết. Vui lòng chọn thẻ khác.",
   "data": null
 }
 ```
@@ -494,39 +552,44 @@ APP_ENV=staging|development|production
 
 ## 9. POST `/api/check-card/:cardCode`
 
-**Mô tả:** Kiểm tra trạng thái của NFC card serial. Dùng trước khi link card. **HTTP method: POST** (matches PHP source).
+**Mô tả:** Kiểm tra trạng thái của NFC card serial. Dùng trước khi link card.
+
+> ⚠️ **PUBLIC route** — không cần auth. Nếu có token thì user được nhận diện (OptionalAuth).
 
 **Request:**
 ```
 POST /api/check-card/ABC123XYZ
-Authorization: Bearer <token>
+(không cần Authorization header)
 ```
 
 **Response — các trạng thái (matching PHP CardController exactly):**
 
-| statusCode | statusText (PHP) | Mô tả |
-|-----------|-----------------|-------|
-| 1 | Có profile | QR đã gắn vào profile, hoặc slug khớp với business |
-| 2 | Chưa có profile & chưa có account | QR chưa gắn vào ai, không tìm thấy business theo slug |
-| 3 | Có account && chưa có profile nhưng ko phải owner | QR có user_id nhưng không có business_id, user hiện tại KHÔNG phải owner |
-| 4 | Có account && chưa có profile & là owner | QR có user_id nhưng không có business_id, user hiện tại LÀ owner |
-| 5 | Có account && chưa có profile | Không đăng nhập: QR có user_id nhưng không có business_id |
-| 6 | (empty) | Default / unknown state |
+| statusCode | Mô tả | Điều kiện |
+|-----------|-------|-----------|
+| 1 | Has Profile | QR đã gắn vào business, hoặc slug khớp với business |
+| 2 | Card Available | QR tồn tại, chưa link business lẫn user; hoặc slug không match |
+| 3 | Owned By Another | QR có user_id, không có business_id, user hiện tại KHÔNG phải owner |
+| 4 | Owner No Profile | QR có user_id, không có business_id, user hiện tại LÀ owner |
+| 5 | Has Account No Profile | Unauthenticated: QR có user_id nhưng không có business_id |
+| 6 | Unknown | Default / QR không tìm thấy và slug không khớp |
 
 ```json
-// Có profile
+// statusCode 1 — có profile
 { "status": true, "message": "", "data": { "statusCode": 1, "profileId": 42, "statusText": "Có profile" } }
 
-// Card available (chưa có account)
+// statusCode 2 — card available
 { "status": true, "message": "", "data": { "statusCode": 2, "profileId": null, "statusText": "Chưa có profile & chưa có account" } }
 
-// Owned by another
+// statusCode 3 — owned by another
 { "status": true, "message": "", "data": { "statusCode": 3, "profileId": null, "statusText": "Có account && chưa có profile nhưng ko phải owner" } }
 
-// Owner, no profile yet
+// statusCode 4 — owner, no profile yet
 { "status": true, "message": "", "data": { "statusCode": 4, "profileId": null, "statusText": "Có account && chưa có profile & là owner" } }
 
-// Default/unknown
+// statusCode 5 — unauthenticated, has account no profile
+{ "status": true, "message": "", "data": { "statusCode": 5, "profileId": null, "statusText": "Có account && chưa có profile" } }
+
+// statusCode 6 — unknown
 { "status": true, "message": "", "data": { "statusCode": 6, "profileId": null, "statusText": "" } }
 ```
 
@@ -538,12 +601,12 @@ Authorization: Bearer <token>
 
 **Side effects:**
 - Luôn ghi `business_history` type `view` + `total_view++`.
-- Nếu `?type=scan` HOẶC slug là mã QR physical card → ghi thêm `business_history` type `scan` + `total_scan++`.
+- Nếu `?fromScan=1` HOẶC slug là mã QR physical card → ghi thêm `business_history` type `scan` + `total_scan++`.
 
 **Request:**
 ```
 GET /api/businesses/public/nguyen-van-a
-GET /api/businesses/public/nguyen-van-a?type=scan
+GET /api/businesses/public/nguyen-van-a?fromScan=1
 GET /api/businesses/public/ABC123XYZ           ← dùng QR code thay vì slug
 ```
 
@@ -557,19 +620,24 @@ GET /api/businesses/public/ABC123XYZ           ← dùng QR code thay vì slug
       "id": 1,
       "slug": "nguyen-van-a",
       "title": "Nguyen Van",
-      "lastName": "A",
+      "last_name": "A",
+      "sub_title": "Công ty ABC",
       "designation": "CEO",
-      "subTitle": "Công ty ABC",
       "bio": "...",
       "logo": "logo_123.png",
       "banner": "banner_1.png",
-      "totalView": 11,
-      "totalScan": 3,
-      "deepLink": "http://localhost:3001/profile/nguyen-van-a",
-      "deepLinkFirebase": "https://inapps.page.link/abc123",
-      "settings": "...",
-      "createdAt": "2026-03-03T07:27:14.000Z",
-      "updatedAt": "2026-03-03T07:27:14.000Z"
+      "total_view": 11,
+      "total_scan": 3,
+      "deep_link": "http://localhost:3001/profile/nguyen-van-a",
+      "deep_link_firebase": "https://inapps.page.link/abc123",
+      "settings": { "phone_enable": 1 },
+      "industries": [{ "id": "0", "name": "Technology" }],
+      "services": [{ "id": "0", "name": "Consulting" }],
+      "profiles_type": "mobile",
+      "owner_id": 13,
+      "created_by": 13,
+      "created_at": "2026-03-03T07:27:14.000Z",
+      "updated_at": "2026-03-03T07:27:14.000Z"
     },
     "contactInfo": [...],
     "businessHours": [...],
@@ -581,8 +649,6 @@ GET /api/businesses/public/ABC123XYZ           ← dùng QR code thay vì slug
   }
 }
 ```
-
-> ⚠️ **Gap cần lưu ý:** Response trả `business` object dạng **raw Drizzle camelCase** (không format như các endpoint `/api/cards`). PHP trả formatted object. Nếu FE Web cần format giống `/api/cards/:id` thì cần chuẩn hóa lại.
 
 ---
 
@@ -629,9 +695,10 @@ Serve tại: GET /storage/contact_qr/{slug}.png
 1. User quét QR code vật lý (physical NFC card)
    → QR encode URL: {APP_URL}/profile/{qrCode.code}
 
-2. GET /api/businesses/public/{qrCode.code}?type=scan
+2. GET /api/businesses/public/{qrCode.code}?fromScan=1
    → Tìm business theo slug, nếu không có → tìm theo qrcode_generated.code
    → Track scan (business_history + total_scan++)
+   → Tạo contact_request type=recent nếu cần
    → Trả về full profile + deep_link_firebase
 
 3. FE Web hiển thị profile, nút "Mở trong app"
@@ -655,5 +722,3 @@ Serve tại: GET /storage/contact_qr/{slug}.png
 | GET `/api/cards/:id` | `approved_at` | ⚠️ Hardcode `null` | PHP lấy từ `contact_requets.created_at` khi status = 'approved' |
 | GET `/api/cards/:id` | `is_enable_appoinment` | ⚠️ Hardcode `1` | PHP check user plan/subscription |
 | GET `/api/cards/:id` | `connected_id`, `connected_name` | ⚠️ Hardcode `null` | PHP lấy từ contact connection |
-| GET `/api/businesses/public/:slug` | `business` object | ⚠️ Raw camelCase | Cần format lại nếu FE cần format giống `/api/cards/:id` |
-| POST `/api/cards` | `qrcode_serial` linking | ⚠️ TODO stub | PHP link qrcode_serial vào business khi tạo card |
