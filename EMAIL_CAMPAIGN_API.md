@@ -19,6 +19,7 @@
   - [Get Campaign by ID](#get-campaign-by-id)
   - [Get Campaign Unsubscribers](#get-campaign-unsubscribers)
   - [Get Campaigns by Status](#get-campaigns-by-status)
+  - [List All Unsubscribes](#list-all-unsubscribes)
   - [Verify Unsubscribe Token](#verify-unsubscribe-token)
   - [Get Unsubscribe Status](#get-unsubscribe-status)
 - [Phase B — Email Tracking](#phase-b--email-tracking)
@@ -349,6 +350,111 @@ GET /api/emails/campaigns/filter/status/scheduled?page=1&limit=10
     }
   }
 }
+```
+
+---
+
+### List All Unsubscribes
+
+Lấy danh sách **tất cả** email đã unsubscribe (từ tất cả campaigns). Hỗ trợ phân trang, search email, filter date.
+
+```http
+GET /api/emails/unsubscribes?page=1&limit=50&email=example.com&from=2026-01-01&to=2026-03-31
+```
+
+**Authentication:** Admin only
+
+#### Query Parameters
+
+| Param | Type | Default | Mô tả |
+|---|---|---|---|
+| `page` | `number` | 1 | Trang hiện tại |
+| `limit` | `number` | 50 | Records trên page (max 100) |
+| `email` | `string` | - | Search partial match (LIKE %email%) |
+| `from` | `date (ISO)` | - | Filter unsubscribed_at >= from |
+| `to` | `date (ISO)` | - | Filter unsubscribed_at <= to (23:59:59) |
+
+#### Examples
+
+**Get all unsubscribes (first page, default 50 per page):**
+```http
+GET /api/emails/unsubscribes
+```
+
+**Search unsubscribes for a domain:**
+```http
+GET /api/emails/unsubscribes?email=gmail.com&page=1&limit=50
+```
+
+**Filter by date range (March 2026):**
+```http
+GET /api/emails/unsubscribes?from=2026-03-01&to=2026-03-31
+```
+
+**Combine search + date filter:**
+```http
+GET /api/emails/unsubscribes?email=example&from=2026-02-01&to=2026-03-31&page=1&limit=100
+```
+
+#### Response (Success)
+
+```json
+{
+  "status": true,
+  "message": "Lấy danh sách unsubscribe thành công",
+  "data": {
+    "unsubscribes": [
+      {
+        "email": "user1@example.com",
+        "unsubscribedAt": "2026-03-09T10:30:00.000Z"
+      },
+      {
+        "email": "user2@example.com",
+        "unsubscribedAt": "2026-03-08T15:20:00.000Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 50,
+      "total": 125,
+      "pages": 3
+    }
+  }
+}
+```
+
+#### Response (Error - Unauthorized)
+
+```json
+{
+  "status": false,
+  "message": "Token xác thực không được cung cấp",
+  "data": null
+}
+```
+
+#### Response (Error - Forbidden)
+
+```json
+{
+  "status": false,
+  "message": "Forbidden resource",
+  "data": null
+}
+```
+
+#### CURL Examples
+
+**Basic request:**
+```bash
+curl -X GET 'http://localhost:3001/api/emails/unsubscribes' \
+  -H 'Authorization: Bearer dev_token_13'
+```
+
+**With search and date filter:**
+```bash
+curl -X GET 'http://localhost:3001/api/emails/unsubscribes?email=example.com&from=2026-01-01&limit=10' \
+  -H 'Authorization: Bearer dev_token_13'
 ```
 
 ---
