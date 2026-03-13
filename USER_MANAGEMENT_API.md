@@ -1,9 +1,18 @@
 # Admin User Management API Documentation
 
-**Version:** 2.1.0
+**Version:** 2.2.0
 **Base URL:** `http://localhost:3001/api`
 **Authentication:** JWT Bearer Token (Admin role required)
-**Last Updated:** 2026-02-09
+**Last Updated:** 2026-03-12
+
+## 🎉 What's New in v2.2.0
+
+### is_can_test (Phase D)
+- ✅ **New field `is_can_test`**: Đánh dấu user là "test recipient" cho campaign testing
+- ✅ **Toggle endpoint**: `PATCH /users/:id/can-test` — flip 0↔1 (Admin only)
+- ✅ **Filter in send-email**: `is_can_test=true` trong `POST /api/emails/send` chỉ gửi cho test users
+
+---
 
 ## 🎉 What's New in v2.1.0
 
@@ -106,6 +115,7 @@ User must have `type` field with one of these values:
 | **Settings** | PUT | `/users/:id/settings` | Update user settings |
 | **Admin** | GET | `/users/:id/login-as` | Impersonate user |
 | **Admin** | GET | `/users/logout-as` | Exit impersonation |
+| **Admin** | PATCH | `/users/:id/can-test` | Toggle is_can_test flag |
 | **Export** | GET | `/users/export` | Export users to Excel |
 | **Export** | GET | `/users/:id/export-qr` | Export QR codes as ZIP |
 
@@ -803,9 +813,62 @@ Authorization: Bearer <token>
 
 ---
 
+## is_can_test Management
+
+### 15. Toggle is_can_test (Test Recipient Flag)
+
+Flip trạng thái `is_can_test` của user: `0 → 1` hoặc `1 → 0`. Dùng để đánh dấu user là "test recipient" — nhận email trước khi broadcast toàn bộ.
+
+**Endpoint:** `PATCH /api/users/:id/can-test`
+
+**Authentication:** ✅ AuthGuard + AdminGuard required
+
+**Path Parameters:**
+- `id` (required) - User ID
+
+**Request Example:**
+```http
+PATCH /api/users/42/can-test
+Authorization: Bearer <token>
+```
+
+> Không cần request body — backend tự flip giá trị hiện tại.
+
+**Success Response (200):**
+```json
+{
+  "status": true,
+  "message": "Cập nhật thành công",
+  "data": {
+    "id": 42,
+    "is_can_test": true
+  }
+}
+```
+
+**Errors:**
+
+| HTTP | Message | Nguyên nhân |
+|---|---|---|
+| `404 Not Found` | `User #42 không tồn tại` | ID không hợp lệ |
+| `401 Unauthorized` | `Token xác thực không được cung cấp` | Thiếu JWT |
+| `403 Forbidden` | `Forbidden resource` | Không phải admin |
+
+**Usage — Send Email to Test Users Only:**
+```json
+POST /api/emails/send
+{
+  "template_id": 3,
+  "is_can_test": true
+}
+```
+> Chỉ gửi cho users có `is_can_test=1`. Kết hợp được với `list_id`, `user_ids`, `user_types`, date range.
+
+---
+
 ## Export Features
 
-### 15. Export Users to Excel
+### 16. Export Users to Excel
 
 Export all users to Excel file in simplified format matching PHP Laravel requirements.
 
@@ -830,7 +893,7 @@ Authorization: Bearer <token>
 
 ---
 
-### 16. Export QR Codes to ZIP
+### 17. Export QR Codes to ZIP
 
 Export user's QR codes as a ZIP file containing SVG images with business slug URLs.
 

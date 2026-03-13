@@ -1,11 +1,11 @@
 # Email Campaign API Documentation
 
-**Version:** 2.0
+**Version:** 2.2
 **Base URL:** `http://localhost:3001/api`
 **Authentication:** JWT Bearer Token (Admin role required, except public endpoints)
-**Last Updated:** 2026-03-09
+**Last Updated:** 2026-03-13
 
-> **Note:** This document covers **Email Campaign features (Phase A, B, C)** — campaign history, email tracking, and scheduled sending. For basic email sending and template management, see [EMAIL_API.md](EMAIL_API.md).
+> **Note:** This document covers **Email Campaign features (Phase A, B, C, D)** — campaign history, email tracking, scheduled sending, and email list management. For basic email sending and template management, see [EMAIL_API.md](EMAIL_API.md).
 
 ---
 
@@ -29,6 +29,16 @@
 - [Phase C — Email Scheduling](#phase-c--email-scheduling)
   - [Schedule Email Campaign](#schedule-email-campaign)
   - [Cancel Scheduled Campaign](#cancel-scheduled-campaign)
+- [Phase D — Email List Management](#phase-d--email-list-management)
+  - [Send Email Filters — New Fields](#send-email-filters--new-fields)
+  - [List All Email Lists](#list-all-email-lists)
+  - [Create Email List](#create-email-list)
+  - [Get Email List by ID](#get-email-list-by-id)
+  - [Update Email List](#update-email-list)
+  - [Delete Email List](#delete-email-list)
+  - [Get List Members](#get-list-members)
+  - [Add Members to List](#add-members-to-list)
+  - [Remove Members from List](#remove-members-from-list)
 - [Campaign Status Reference](#campaign-status-reference)
 - [Database Schema](#database-schema)
 - [Environment Variables](#environment-variables)
@@ -58,6 +68,13 @@ Email Campaign Module cung cấp khả năng **quản lý email campaign toàn v
 - ✅ **Startup reconciliation**: Nếu Redis restart, app tự động re-enqueue các campaign đã schedule
 - ✅ **Cancel anytime**: Hủy campaign scheduled trước khi thực thi
 
+### Phase D — Email List Management
+- ✅ **Named email lists**: Tạo/quản lý danh sách email tùy chỉnh (name, description, tags)
+- ✅ **Flexible membership**: Thêm thành viên bằng `user_ids` hoặc raw `emails` (external emails supported)
+- ✅ **Multi-list**: Một user có thể nằm trong nhiều list
+- ✅ **list_id filter**: Dùng `list_id` trong `POST /api/emails/send` để gửi cho toàn bộ members
+- ✅ **is_can_test flag**: Đánh dấu user là "test recipient" — filter kết hợp với bất kỳ recipient filter nào
+
 ---
 
 ## Architecture
@@ -85,6 +102,7 @@ Email Campaign Module cung cấp khả năng **quản lý email campaign toàn v
              ├──► EmailCampaignRepository (create, update, query)
              ├──► EmailUnsubscribeRepository (check blacklist)
              ├──► EmailTrackingRepository (record open/click) [Phase B]
+             ├──► EmailListRepository (resolve list members) [Phase D]
              ├──► Nodemailer.sendMail()
              └──► Bull Queue [Phase C]
 
@@ -114,12 +132,22 @@ POST /api/emails/send
 
 #### Sự khác biệt Phase A
 
-Request body hỗ trợ thêm 2 field (optional):
+Request body hỗ trợ thêm các field (optional):
 
 | Field | Type | Bắt buộc | Mô tả |
 |---|---|---|---|
 | `campaign_name` | `string` | Không | Tên campaign tùy chỉnh (default: `{template_name} - {date}`) |
 | `include_unsubscribe_link` | `boolean` | Không | Thêm unsubscribe footer vào email (default: `true`) |
+| `list_id` | `number` | Không | **[Phase D]** Gửi cho toàn bộ members trong Email List |
+| `is_can_test` | `boolean` | Không | **[Phase D]** Nếu `true` → chỉ gửi cho users có `is_can_test=1`. Kết hợp với bất kỳ filter nào |
+
+**Recipient priority** (cao → thấp):
+1. `user_emails` — gửi thẳng, không query DB
+2. `list_id` — lấy emails từ `email_list_members`
+3. `user_ids` / `user_types` / `created_from`+`created_to` — filter từ bảng users
+4. (none) — toàn bộ users
+
+`is_can_test=true` luôn áp dụng sau khi resolve recipients (trừ `user_emails`).
 
 #### Response (Phase A enhancement)
 
@@ -212,6 +240,11 @@ GET /api/emails/campaigns?page=1&limit=20&status=sent
         "lang": "vi",
         "recipient_mode": "filter",
         "subject": "March Newsletter",
+        "body": "<h1>Hello</h1>...",
+        "subject_vi": "Bản tin tháng 3",
+        "body_vi": "<h1>Xin chào</h1>...",
+        "subject_en": "March Newsletter",
+        "body_en": "<h1>Hello</h1>...",
         "total": 100,
         "success": 98,
         "failed": 2,
@@ -264,6 +297,11 @@ GET /api/emails/campaigns/:id
     "lang": "vi",
     "recipient_mode": "filter",
     "subject": "March Newsletter",
+    "body": "<h1>Hello</h1>...",
+    "subject_vi": "Bản tin tháng 3",
+    "body_vi": "<h1>Xin chào</h1>...",
+    "subject_en": "March Newsletter",
+    "body_en": "<h1>Hello</h1>...",
     "total": 100,
     "success": 98,
     "failed": 2,
@@ -762,6 +800,291 @@ DELETE /api/emails/schedule/:id
 
 ---
 
+## Phase D — Email List Management
+
+### Send Email Filters — New Fields
+
+Hai field mới trong `POST /api/emails/send` (xem [Phase A section](#sự-khác-biệt-phase-a) cho đầy đủ).
+
+| Field | Type | Mô tả |
+|---|---|---|
+| `list_id` | `number` | Gửi cho tất cả members trong Email List |
+| `is_can_test` | `boolean` | Chỉ gửi cho users có `is_can_test=1` |
+
+---
+
+### List All Email Lists
+
+```http
+GET /api/email-lists?page=1&limit=20&search=beta
+Authorization: Bearer <token>
+```
+
+**Authentication:** Admin only
+
+#### Query Parameters
+
+| Param | Type | Default | Mô tả |
+|---|---|---|---|
+| `page` | `number` | `1` | Trang (min: 1) |
+| `limit` | `number` | `20` | Số item/trang (max: 100) |
+| `search` | `string` | - | Search theo tên list |
+
+#### Response
+
+```json
+{
+  "status": true,
+  "message": "OK",
+  "data": {
+    "lists": [
+      {
+        "id": 1,
+        "name": "Beta Q1 2026",
+        "description": "Danh sách user thử nghiệm",
+        "tags": ["beta", "q1"],
+        "member_count": 250,
+        "created_at": "2026-03-12T10:00:00Z",
+        "updated_at": "2026-03-12T10:00:00Z"
+      }
+    ],
+    "pagination": { "page": 1, "limit": 20, "total": 5, "pages": 1 }
+  }
+}
+```
+
+---
+
+### Create Email List
+
+```http
+POST /api/email-lists
+Authorization: Bearer <token>
+```
+
+**Authentication:** Admin only
+
+#### Request Body
+
+```json
+{
+  "name": "VIP Customers",
+  "description": "Khách hàng VIP Q2",
+  "tags": ["vip", "q2"]
+}
+```
+
+| Field | Type | Bắt buộc | Mô tả |
+|---|---|---|---|
+| `name` | `string` | **Có** | Tên list |
+| `description` | `string` | Không | Mô tả |
+| `tags` | `string[]` | Không | Tags (default: `[]`) |
+
+#### Response `201 Created`
+
+```json
+{
+  "status": true,
+  "message": "Tạo list thành công",
+  "data": { "id": 2, "name": "VIP Customers", "tags": ["vip", "q2"], "member_count": 0, ... }
+}
+```
+
+---
+
+### Get Email List by ID
+
+```http
+GET /api/email-lists/:id
+Authorization: Bearer <token>
+```
+
+**Authentication:** Admin only
+
+#### Response
+
+```json
+{
+  "status": true,
+  "message": "OK",
+  "data": { "id": 1, "name": "Beta Q1 2026", "description": "...", "tags": ["beta"], "member_count": 250, ... }
+}
+```
+
+#### Errors
+
+| HTTP | Message |
+|---|---|
+| `404 Not Found` | `List #:id không tồn tại` |
+
+---
+
+### Update Email List
+
+```http
+PUT /api/email-lists/:id
+Authorization: Bearer <token>
+```
+
+**Authentication:** Admin only
+
+#### Request Body (all fields optional)
+
+```json
+{
+  "name": "Beta Q1 2026 — Updated",
+  "description": "Mô tả mới",
+  "tags": ["beta"]
+}
+```
+
+#### Response
+
+```json
+{
+  "status": true,
+  "message": "Cập nhật list thành công",
+  "data": { "id": 1, "name": "Beta Q1 2026 — Updated", ... }
+}
+```
+
+---
+
+### Delete Email List
+
+```http
+DELETE /api/email-lists/:id
+Authorization: Bearer <token>
+```
+
+**Authentication:** Admin only
+
+> Members bị xóa cascade (cả DB và explicit delete trong code).
+
+#### Response
+
+```json
+{
+  "status": true,
+  "message": "Xóa list thành công",
+  "data": null
+}
+```
+
+---
+
+### Get List Members
+
+```http
+GET /api/email-lists/:id/members?page=1&limit=20&q=example.com
+Authorization: Bearer <token>
+```
+
+**Authentication:** Admin only
+
+#### Query Parameters
+
+| Param | Type | Default | Mô tả |
+|---|---|---|---|
+| `page` | `number` | `1` | Trang |
+| `limit` | `number` | `20` | Số item/trang (max: 100) |
+| `q` | `string` | - | Search theo email |
+
+#### Response
+
+```json
+{
+  "status": true,
+  "message": "OK",
+  "data": {
+    "list": { "id": 1, "name": "Beta Q1 2026" },
+    "members": [
+      { "id": 1, "user_id": 42, "email": "user@example.com", "created_at": "..." },
+      { "id": 2, "user_id": null, "email": "external@gmail.com", "created_at": "..." }
+    ],
+    "pagination": { "page": 1, "limit": 20, "total": 250, "pages": 13 }
+  }
+}
+```
+
+> `user_id` là `null` khi email không có trong bảng `users` (external email).
+
+---
+
+### Add Members to List
+
+```http
+POST /api/email-lists/:id/members
+Authorization: Bearer <token>
+```
+
+**Authentication:** Admin only
+
+#### Request Body
+
+```json
+{
+  "user_ids": [42, 43, 44],
+  "emails": ["external1@gmail.com", "external2@gmail.com"]
+}
+```
+
+| Field | Type | Mô tả |
+|---|---|---|
+| `user_ids` | `number[]` | Thêm bằng user ID (auto-resolve sang email) |
+| `emails` | `string[]` | Thêm bằng email (external emails supported) |
+
+> Phải có ít nhất 1 trong 2 field. Duplicate bị bỏ qua (không báo lỗi).
+
+#### Response
+
+```json
+{
+  "status": true,
+  "message": "Thêm members thành công",
+  "data": { "added": 4, "skipped": 1 }
+}
+```
+
+#### Errors
+
+| HTTP | Message | Nguyên nhân |
+|---|---|---|
+| `400 Bad Request` | `Phải cung cấp ít nhất user_ids hoặc emails` | Body rỗng |
+| `404 Not Found` | `List #:id không tồn tại` | List không có |
+
+---
+
+### Remove Members from List
+
+```http
+DELETE /api/email-lists/:id/members
+Authorization: Bearer <token>
+```
+
+**Authentication:** Admin only
+
+#### Request Body
+
+```json
+{
+  "user_ids": [42],
+  "emails": ["external1@gmail.com"]
+}
+```
+
+#### Response
+
+```json
+{
+  "status": true,
+  "message": "Xóa members thành công",
+  "data": { "removed": 2 }
+}
+```
+
+---
+
 ## Campaign Status Reference
 
 | Status | Meaning | Can Transition To | Notes |
@@ -843,6 +1166,51 @@ CREATE TABLE email_tracking_events (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
+### `users.is_can_test` (Phase D)
+
+```sql
+ALTER TABLE users
+ADD COLUMN is_can_test TINYINT(1) NOT NULL DEFAULT 0;
+-- Index for fast lookup
+ALTER TABLE users ADD INDEX idx_users_can_test (is_can_test);
+```
+
+### `email_lists` (Phase D)
+
+```sql
+CREATE TABLE email_lists (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  name        VARCHAR(255) NOT NULL,
+  description TEXT NULL,
+  tags        JSON DEFAULT (JSON_ARRAY()),
+  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  INDEX idx_email_lists_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+### `email_list_members` (Phase D)
+
+```sql
+CREATE TABLE email_list_members (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  list_id    INT NOT NULL,
+  user_id    INT NULL,          -- NULL nếu email không có trong bảng users
+  email      VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE KEY uq_list_email (list_id, email),
+  INDEX idx_list_members_list (list_id),
+  INDEX idx_list_members_user (user_id),
+
+  CONSTRAINT fk_list_members_list
+    FOREIGN KEY (list_id) REFERENCES email_lists(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+> Migration SQL đầy đủ: [`EMAIL_LIST_MIGRATION.sql`](EMAIL_LIST_MIGRATION.sql)
+
 ---
 
 ## Environment Variables
@@ -875,6 +1243,8 @@ REDIS_PASSWORD=null  # or your redis password
 | **Email Unsubscribe** | ❌ | ✅ Footer injection + blacklist (Phase A) |
 | **Open/Click Tracking** | ❌ | ✅ Pixel + redirect (Phase B) |
 | **Scheduled Send** | ❌ | ✅ Bull Queue + reconciliation (Phase C) |
+| **Email Lists** | ❌ | ✅ Named lists + member management (Phase D) |
+| **Test Recipients** | ❌ | ✅ `is_can_test` flag + filter (Phase D) |
 
 ---
 

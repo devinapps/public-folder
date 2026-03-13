@@ -2,6 +2,19 @@
 -- This migration adds indexes for efficient scheduled campaign queries
 -- All required schema columns (scheduled_at, scheduled_payload, status) already exist in email_campaigns table
 
+-- ── 2026-03-12: Add body column to email_campaigns ──────────────────────────
+-- Stores the resolved email body at time of sending for campaign history/audit
+ALTER TABLE email_campaigns
+ADD COLUMN body LONGTEXT NULL AFTER subject;
+
+-- ── 2026-03-13: Add multi-language body/subject columns ──────────────────────
+-- Stores per-language content for campaigns sent with send_by_lang=true
+ALTER TABLE email_campaigns
+ADD COLUMN subject_vi TEXT NULL AFTER body,
+ADD COLUMN body_vi LONGTEXT NULL AFTER subject_vi,
+ADD COLUMN subject_en TEXT NULL AFTER body_vi,
+ADD COLUMN body_en LONGTEXT NULL AFTER subject_en;
+
 -- Verify email_campaigns table structure (should already have these from Phase A+B)
 DESCRIBE email_campaigns;
 

@@ -525,10 +525,6 @@ npm test -- --coverage
 | [Appointment API](https://github.com/devinapps/public-folder/blob/main/APPOINTMENT_API_REFERENCE.md) | Appointments — đặt lịch, accept/reject, FCM notification, Google Calendar sync |
 | [Email API](./EMAIL_API.md) | Email — basic send + templates (send, CRUD templates) |
 | [Email Campaign API](./EMAIL_CAMPAIGN_API.md) | **⭐ NEW** — Campaign tracking (A), email tracking (B), scheduling (C) — tổng hợp Phase A/B/C |
-| [Email Campaign UI](https://github.com/devinapps/public-folder/blob/main/EMAIL_CAMPAIGN_UI_REQUIREMENTS.md) | Email Campaign — UI requirements, wireframe, API mapping cho Next.js frontend |
-| [Email Campaign Plan](./EMAIL_CAMPAIGN_PLAN.md) | Email Campaign — Detailed implementation plan + architecture (Phase A/B/C/D) |
-| [Phase C Implementation](./PHASE_C_IMPLEMENTATION_SUMMARY.md) | Phase C — Scheduling feature, idempotent design, startup reconciliation |
-| [Phase C Testing Guide](./PHASE_C_TESTING_GUIDE.md) | Phase C — 7 manual test scenarios với curl examples |
 | [Activities Module](https://github.com/devinapps/public-folder/blob/main/NEWS_FEED_MANAGEMENT_API.md) | Activities — quản lý bài đăng, approval workflow, GetStream sync |
 | [Notification Module](https://github.com/devinapps/public-folder/blob/main/FCM_NOTIFICATION_SYSTEM.md) | Notifications — push notification qua Firebase, Bull Queue architecture |
 | [Users Module](https://github.com/devinapps/public-folder/blob/main/USER_MANAGEMENT_API.md) | Users — CRUD user, impersonation, export, plan management |

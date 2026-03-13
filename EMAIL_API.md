@@ -1,9 +1,9 @@
 # Email API Documentation
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Base URL:** `http://localhost:3001/api`
 **Authentication:** JWT Bearer Token (Admin role required)
-**Last Updated:** 2026-02-24
+**Last Updated:** 2026-03-13
 
 > **📧 New:** For **Email Campaign features** (campaign history, tracking, scheduling), see [EMAIL_CAMPAIGN_API.md](EMAIL_CAMPAIGN_API.md). This document covers basic email sending and template management only.
 
@@ -70,7 +70,9 @@ POST /api/emails/send
   │     └── Không có template_id → dùng subject + body nhập tay
   ├─► resolveRecipients(): lấy danh sách email
   │     ├── user_emails → trả về ngay, không query DB
+  │     ├── list_id → query email_list_members [Phase D]
   │     ├── user_ids / user_types / created_from+to → query bảng users
+  │     ├── is_can_test → áp dụng filter users.is_can_test=1 [Phase D]
   │     └── Không có filter → lấy toàn bộ users
   └─► Loop sendMail() → trả về { total, success, failed, failed_emails }
 ```
@@ -156,11 +158,19 @@ POST /api/emails/send
 | `include_unsubscribe_link` | `boolean` | Không | Tự động thêm unsubscribe footer (default: `true`) |
 | `redirect_url` | `string` | Không | URL cố định để redirect tất cả link trong email (vẫn tracking được click từng link) |
 | `url_images` | `array` | Không | Danh sách ảnh URL để inject vào body: `[{ filename: string, url: string }, ...]` — phải public URL |
+| `list_id` | `number` | Không | **[Phase D]** Gửi cho toàn bộ members trong Email List (xem [EMAIL_CAMPAIGN_API.md](EMAIL_CAMPAIGN_API.md#phase-d--email-list-management)) |
+| `is_can_test` | `boolean` | Không | **[Phase D]** Nếu `true` → chỉ gửi cho users có `is_can_test=1`. Kết hợp được với bất kỳ filter nào (trừ `user_emails`) |
 
 > **(\*)** Khi có `template_id`: `subject` và `body` là **optional** (dùng để override nội dung từ template).
 > Khi không có `template_id`: cả hai là **bắt buộc**.
 
-> **Ưu tiên filter recipient:** `user_emails` > `user_ids` + `user_types` + `created_from/to`. Khi truyền `user_emails`, các filter khác về user bị bỏ qua.
+> **Ưu tiên filter recipient** (cao → thấp):
+> 1. `user_emails` — gửi thẳng, không query DB
+> 2. `list_id` — lấy emails từ `email_list_members`
+> 3. `user_ids` / `user_types` / `created_from`+`created_to` — filter từ bảng users
+> 4. _(none)_ — toàn bộ users
+>
+> `is_can_test=true` luôn áp dụng sau khi resolve recipients (trừ `user_emails`).
 
 > **Không truyền filter nào** → gửi cho **toàn bộ user** trong hệ thống.
 
@@ -723,13 +733,15 @@ Bảng tóm tắt tất cả cách lọc recipient cho `POST /api/emails/send`:
 | Filter | Field | Ví dụ | Ghi chú |
 |---|---|---|---|
 | Tất cả user | _(không truyền gì)_ | `{}` | Broadcast toàn bộ |
-| Theo email | `user_emails` | `["a@b.com"]` | Không query DB — nhanh nhất |
+| Theo email | `user_emails` | `["a@b.com"]` | Không query DB — nhanh nhất; bỏ qua mọi filter khác |
+| Theo Email List | `list_id` | `3` | Lấy từ `email_list_members` — ưu tiên 2 |
 | Theo user ID | `user_ids` | `[1, 5, 20]` | Query `WHERE id IN (...)` |
 | Theo loại TK | `user_types` | `["admin"]` | Query `WHERE type IN (...)` |
 | Theo ngày ĐK | `created_from` + `created_to` | `"2024-01-01"` | `WHERE created_at BETWEEN ... AND ...` — `created_to` set 23:59:59 |
+| Chỉ test users | `is_can_test: true` | `true` | Kết hợp với bất kỳ filter trên (trừ `user_emails`) |
 | Kết hợp | Nhiều field | Xem ví dụ 9 | `user_ids` + `user_types` + date dùng AND logic |
 
-> **Ưu tiên:** Khi có `user_emails`, toàn bộ filter còn lại bị bỏ qua.
+> **Ưu tiên:** `user_emails` → `list_id` → `user_ids`/`user_types`/date → _(all users)_. `is_can_test` luôn áp dụng sau cùng (trừ `user_emails`).
 
 ---
 

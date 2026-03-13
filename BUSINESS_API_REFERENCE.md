@@ -1,6 +1,6 @@
 # Business Card & QR API Reference
 
-**Last updated:** 2026-03-05
+**Last updated:** 2026-03-11 (Phase 1-3 fixes: Dynamic queries, Serial QR lookup, Cascade delete implemented)
 **Base URL:** `{APP_URL}/api`
 **Auth:** `Authorization: Bearer <jwt_token>` (trừ endpoint public và check-card)
 
@@ -106,7 +106,7 @@ Authorization: Bearer <token>
 **Notes so sánh PHP:**
 - `deeplink` = `business.deep_link` từ DB (auto-generated khi null). Nếu có physical card → `{APP_URL}/profile/{qrCode.code}`, nếu không → `{APP_URL}/profile/{slug}`.
 - `profile_url` **có** prefix `/profile/` (PHP `index()` behavior).
-- `request_status` hiện hardcode `"not_requested"` — PHP query từ `contact_requets` table (TODO).
+- **[Phase 1 - B2 ✅]** `request_status` — từ `contact_requets` table (dynamic query — không còn hardcode).
 - `sociallinks` = `social_links`: cùng nội dung, format `[{ "PlatformName": "url", "id": 0 }]`.
 - `industries`, `services`, `need_services`: luôn trả `[{id, name}]` — PHP lưu DB dạng `{"0":"name"}` và transform.
 - `settings`: object đã parse. Defaults: `{phone_enable:1, zalo_enable:1, whatsapp_enable:1}` merge với giá trị DB.
@@ -207,7 +207,7 @@ logo: <file>                    (optional, multipart)
 | Param | Value | Mô tả |
 |-------|-------|-------|
 | `fromScan` | `1` \| `true` | Track scan history (PHP behavior) |
-| `type` | `serial` | Lookup card theo QR serial code thay vì ID (PHP behavior) |
+| `type` | `serial` | **[Phase 1 - B1 ✅]** Lookup card theo QR serial code thay vì ID (PHP behavior) |
 
 **Side effects:**
 - Ghi record `business_history` type `view`.
@@ -284,10 +284,10 @@ Authorization: Bearer <token>
 - `total_view` / `total_scan`: lấy từ DB sau khi increment (reload).
 - `testimonials_is_enabled`: từ `testimonials.is_enabled` DB field.
 - `hasPhysicalCard`: `true` nếu có row trong `qrcode_generated` với `business_id = id`.
-- `is_enable_appoinment`: hardcode `1` (PHP check user plan — TODO nếu cần).
-- `approved_at`: hardcode `null` (PHP query `contact_requets` — TODO).
-- `request_status`: hardcode `"not_requested"` (TODO).
-- `connected_id`, `connected_name`: hardcode `null` (PHP contact connection — TODO).
+- **[Phase 2 - B11 ✅]** `is_enable_appoinment`: từ `user.plan.enableAppointment` (dynamic query).
+- **[Phase 2 - B8 ✅]** `approved_at`: từ `contact_requets.created_at` khi status = 'approved' (dynamic query).
+- **[Phase 1 - B2 ✅]** `request_status`: từ `contact_requets` table (dynamic query — không còn hardcode).
+- **[Phase 2 - B9 ✅]** `connected_id`, `connected_name`: từ approved contact (dynamic query — không còn hardcode).
 
 ---
 
@@ -365,9 +365,10 @@ logo: <file>                    (optional, multipart)
 }
 ```
 
-**Side effects:**
+**Side effects (Phase 2 - B3 ✅ — AI webhook):**
 - Luôn overwrite `card_theme = theme5`, `theme_color = color5-theme5` (PHP behavior).
 - Reset `matching_data = null` (force AI re-embedding).
+- **[PHASE 2 - B3 ✅]** Gọi webhook `RENEW_POTENTIAL_PROFILE_WEBHOOK_URL` (fire-and-forget) để re-embed AI matching data.
 - Gọi webhook `CARD_WEBHOOK_URL` với `{card_id, type: "upsert"}`.
 
 **Notes so sánh PHP:**
@@ -405,10 +406,11 @@ Authorization: Bearer <token>
 }
 ```
 
-**Side effects:**
-- Xóa row trong `social` table.
+**Side effects (Phase 4 - B4 ✅ — Cascade delete):**
+- Xóa tất cả child records (correct order):
+  - `contactInfos`, `businessHours`, `servicesTable`, `testimonials`
+  - `businessHistories`, `socials`, `contactRequets`
 - Unlink `qrcode_generated` (set `business_id = null`).
-- Xóa tất cả `contact_requets` liên quan (`business_id = id`).
 - Xóa row trong `businesses` table.
 - Gọi webhook `CARD_WEBHOOK_URL` với `{card_id, type: "delete"}`.
 
@@ -714,11 +716,19 @@ Serve tại: GET /storage/contact_qr/{slug}.png
 
 ---
 
-## TODOs còn lại (chưa implement)
+## Phase 1-3 Fixes Status
 
 | Endpoint | Field | Trạng thái | Mô tả |
 |---------|-------|-----------|-------|
-| GET `/api/cards`, GET `/api/cards/:id` | `request_status` | ⚠️ Hardcode `"not_requested"` | PHP query `contact_requets` table WHERE user_id + business_id |
-| GET `/api/cards/:id` | `approved_at` | ⚠️ Hardcode `null` | PHP lấy từ `contact_requets.created_at` khi status = 'approved' |
-| GET `/api/cards/:id` | `is_enable_appoinment` | ⚠️ Hardcode `1` | PHP check user plan/subscription |
-| GET `/api/cards/:id` | `connected_id`, `connected_name` | ⚠️ Hardcode `null` | PHP lấy từ contact connection |
+| GET `/api/cards`, GET `/api/cards/:id` | `request_status` | ✅ **[Phase 1 - B2]** IMPLEMENTED | Dynamic query từ `contact_requets` table |
+| GET `/api/cards/:id` | `approved_at` | ✅ **[Phase 2 - B8]** IMPLEMENTED | Dynamic từ `contact_requets.created_at` khi status = 'approved' |
+| GET `/api/cards/:id` | `is_enable_appoinment` | ✅ **[Phase 2 - B11]** IMPLEMENTED | Dynamic từ `user.plan.enableAppointment` |
+| GET `/api/cards/:id` | `connected_id`, `connected_name` | ✅ **[Phase 2 - B9]** IMPLEMENTED | Dynamic từ approved contact |
+| POST `/api/cards/update/:id` | AI webhook | ✅ **[Phase 2 - B3]** IMPLEMENTED | Fire-and-forget call đến `RENEW_POTENTIAL_PROFILE_WEBHOOK_URL` |
+| DELETE `/api/cards/:id` | Cascade delete | ✅ **[Phase 4 - B4]** IMPLEMENTED | Xóa tất cả child records (contactInfos, businessHours, services, testimonials, histories) |
+| GET `/api/cards/:id` | `?type=serial` | ✅ **[Phase 1 - B1]** IMPLEMENTED | Lookup card theo QR serial code thay vì numeric ID |
+
+### Reference Documentation
+- **Postman Collection**: [user-profiles.json](../user-profiles.json) — 3 new test endpoints (8, 9, 10)
+- **Update Log**: [POSTMAN_COLLECTION_UPDATE.md](POSTMAN_COLLECTION_UPDATE.md)
+- **Phase Plan**: [BUSINESS_CARD_API_PHASES.md](BUSINESS_CARD_API_PHASES.md)
