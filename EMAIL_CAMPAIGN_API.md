@@ -1,9 +1,9 @@
 # Email Campaign API Documentation
 
-**Version:** 2.2
+**Version:** 2.3
 **Base URL:** `http://localhost:3001/api`
 **Authentication:** JWT Bearer Token (Admin role required, except public endpoints)
-**Last Updated:** 2026-03-13
+**Last Updated:** 2026-03-16
 
 > **Note:** This document covers **Email Campaign features (Phase A, B, C, D)** — campaign history, email tracking, scheduled sending, and email list management. For basic email sending and template management, see [EMAIL_API.md](EMAIL_API.md).
 
@@ -140,6 +140,9 @@ Request body hỗ trợ thêm các field (optional):
 | `include_unsubscribe_link` | `boolean` | Không | Thêm unsubscribe footer vào email (default: `true`) |
 | `list_id` | `number` | Không | **[Phase D]** Gửi cho toàn bộ members trong Email List |
 | `is_can_test` | `boolean` | Không | **[Phase D]** Nếu `true` → chỉ gửi cho users có `is_can_test=1`. Kết hợp với bất kỳ filter nào |
+| `send_by_lang` | `boolean` | Không | Gửi theo ngôn ngữ người dùng (`users.lang`). Mỗi recipient nhận email theo ngôn ngữ của họ. Yêu cầu template có ≥ 2 ngôn ngữ |
+| `subject_vi` | `string` | Không | Override subject tiếng Việt khi `send_by_lang=true` |
+| `body_vi` | `string` | Không | Override body tiếng Việt (HTML) khi `send_by_lang=true` |
 
 **Recipient priority** (cao → thấp):
 1. `user_emails` — gửi thẳng, không query DB
@@ -193,6 +196,25 @@ Database (email_campaigns table):
   "include_unsubscribe_link": true
 }
 ```
+
+#### Example with send_by_lang
+
+```json
+{
+  "template_id": 3,
+  "send_by_lang": true,
+  "subject_vi": "Bản tin tháng 3",
+  "body_vi": "<h1>Xin chào {{firstName}}!</h1><p>Nội dung tiếng Việt...</p>",
+  "subject": "March Newsletter",
+  "body": "<h1>Hello {{firstName}}!</h1><p>English content...</p>",
+  "campaign_name": "Newsletter Q1 2026 - Multi-lang",
+  "include_unsubscribe_link": true
+}
+```
+
+**Fallback chain khi `send_by_lang=true`:**
+- User có `lang='vi'`: dùng `subject_vi` / `body_vi` → fallback `subject_vi` từ template lang `vi` → fallback EN
+- User có `lang='en'` hoặc lang khác: dùng `subject` / `body` → fallback từ template lang `en` / `langs[0]`
 
 **What happens:**
 1. ✅ Campaign record created with `name` = "Newsletter - Q1 2026"
@@ -706,10 +728,13 @@ Kết hợp `SendEmailDto` (xem [EMAIL_API.md](EMAIL_API.md#send-bulk-email)) + 
 | `created_to` | `string` | Không | Lọc theo date to |
 | `template_id` | `number` | Không | Template ID |
 | `lang` | `string` | Không | Template lang (default: `vi`) |
-| `subject` | `string` | Có (*) | Subject |
-| `body` | `string` | Có (*) | Body |
+| `subject` | `string` | Có (*) | Subject (EN hoặc mặc định) |
+| `body` | `string` | Có (*) | Body (EN hoặc mặc định) |
 | `include_unsubscribe_link` | `boolean` | Không | Phase A feature (default: `true`) |
 | `redirect_url` | `string` | Không | Phase B feature |
+| `send_by_lang` | `boolean` | Không | Gửi theo ngôn ngữ người dùng — mỗi recipient nhận theo `users.lang` |
+| `subject_vi` | `string` | Không | Override subject tiếng Việt khi `send_by_lang=true` |
+| `body_vi` | `string` | Không | Override body tiếng Việt (HTML) khi `send_by_lang=true` |
 
 > **(\*)** Bắt buộc nếu không có `template_id`
 
@@ -722,6 +747,22 @@ Kết hợp `SendEmailDto` (xem [EMAIL_API.md](EMAIL_API.md#send-bulk-email)) + 
   "user_emails": ["customer@example.com"],
   "subject": "Happy New Year!",
   "body": "<h1>Welcome to 2027!</h1>",
+  "include_unsubscribe_link": true
+}
+```
+
+#### Request Example với send_by_lang
+
+```json
+{
+  "scheduled_at": "2026-12-31T15:30:00Z",
+  "name": "New Year Campaign - Multi-lang",
+  "template_id": 3,
+  "send_by_lang": true,
+  "subject_vi": "Chúc mừng năm mới 2027!",
+  "body_vi": "<h1>Kính chúc {{firstName}} năm mới an khang!</h1>",
+  "subject": "Happy New Year 2027!",
+  "body": "<h1>Happy New Year {{firstName}}!</h1>",
   "include_unsubscribe_link": true
 }
 ```

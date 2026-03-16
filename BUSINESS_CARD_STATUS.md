@@ -1,6 +1,6 @@
 # Business Card API — Trạng Thái Hiện Tại
 
-> Cập nhật lần cuối: 2026-03-12
+> Cập nhật lần cuối: 2026-03-16
 
 ---
 
@@ -15,6 +15,7 @@
 | `/api/cards/:id` | GET | Lấy chi tiết card | Tracking view/scan, serial lookup `?type=serial` |
 | `/api/cards/update/:id` | POST | Cập nhật card | Logo, banner, media, services, socials, contact_info, hours — 1 request |
 | `/api/cards/:id` | DELETE | Xoá card | Cascade 8 bảng liên quan + unlink QR |
+| `/api/cards/industries` | GET | Danh sách ngành nghề predefined | `?lang=vi` (default vi), public trong AuthGuard |
 | `/api/cards/banner/:id` | POST | Upload banner riêng | — |
 | `/api/cards/link-card/:id` | POST | Link NFC card vật lý | — |
 | `/api/cards/:id/generate-deeplink` | POST | Tạo Firebase Dynamic Link | — |
@@ -105,6 +106,7 @@ GET /api/cards/:id/analytics
 | Invite co-owner (`owner_ids`) | PHP có nhưng NestJS chưa implement; không cần ngay |
 | Appointment config endpoint riêng | `appointment-config.repository.ts` có nhưng `is_enable_appoinment` đã trả về trong `GET /api/cards/:id` |
 | Testimonials / Business Hours CRUD riêng | Đã xử lý đủ trong `POST /api/cards/update/:id` |
+| Industries POST/DELETE (thêm/xoá ngành cụ thể) | Hiện xử lý qua `industries[]` trong update card, đủ cho CMS |
 | Analytics date filter (custom range) | Phase 2.x sau khi có chart cơ bản |
 
 ---

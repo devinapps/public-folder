@@ -11,6 +11,7 @@
 | Method | Endpoint | Auth | Mô tả |
 |--------|----------|------|-------|
 | GET | `/api/cards` | ✅ JWT | Danh sách cards của user |
+| GET | `/api/cards/industries` | ✅ JWT | Danh sách ngành nghề predefined |
 | POST | `/api/cards` | ✅ JWT | Tạo card mới |
 | GET | `/api/cards/:id` | ✅ JWT | Chi tiết card + track view/scan |
 | POST | `/api/cards/update/:id` | ✅ JWT | Cập nhật card |
@@ -416,7 +417,38 @@ Authorization: Bearer <token>
 
 ---
 
-## 6. POST `/api/cards/banner/:id`
+## 6. GET `/api/cards/industries`
+
+**Mô tả:** Lấy danh sách ngành nghề predefined từ bảng `industry_category` (status=1).
+
+**Query params:** `?lang=vi` (default: `vi`)
+
+**Request:**
+```
+GET /api/cards/industries?lang=vi
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Lấy danh sách ngành nghề thành công",
+  "data": [
+    { "id": 1, "name": "Công nghệ thông tin" },
+    { "id": 2, "name": "Tài chính - Ngân hàng" },
+    { "id": 3, "name": "Bất động sản" }
+  ]
+}
+```
+
+**Ghi chú:**
+- Dùng để populate dropdown gợi ý trong form tạo/sửa card (FE `IndustriesTagInput` component).
+- FE cũng cho phép nhập free-text tạo tag mới — BE nhận `industries: ["tên1", "tên2"]` trong create/update.
+
+---
+
+## 7. POST `/api/cards/banner/:id`
 
 **Mô tả:** Upload ảnh banner cho card.
 
