@@ -12,7 +12,7 @@
   "item": [
     {
       "name": "Lists CRUD",
-      "item": [
+      "item": [     
         {
           "name": "1. Get All Email Lists",
           "request": {
