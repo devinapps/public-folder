@@ -1,0 +1,446 @@
+{
+  "info": {
+    "name": "InCard Business Card API",
+    "description": "Business Card + Appointment endpoints — NestJS CMS_InCard_api (port 3001). Dùng để so sánh response với incard-biz PHP (port 8000).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3001", "description": "NestJS API base URL" },
+    { "key": "php_url",  "value": "http://localhost:8000", "description": "Laravel incard-biz base URL" },
+    { "key": "token",    "value": "YOUR_JWT_TOKEN_HERE",    "description": "Bearer token từ /api/auth/login" },
+    { "key": "card_id",  "value": "1",                      "description": "ID của business card để test" },
+    { "key": "card_slug","value": "nguyen-van-a",            "description": "Slug của card" },
+    { "key": "qr_serial","value": "ABC123XYZ",               "description": "QR/NFC serial code" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login (lấy token)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/auth/login", "host": ["{{base_url}}"], "path": ["api","auth","login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"your@email.com\",\n  \"password\": \"yourpassword\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Business Cards",
+      "item": [
+        {
+          "name": "1. GET /api/cards — Danh sách cards",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/cards",
+              "host": ["{{base_url}}"],
+              "path": ["api","cards"]
+            }
+          }
+        },
+        {
+          "name": "1b. GET /api/cards?profiles_type=mobile — Filter theo type",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/cards?profiles_type=mobile",
+              "host": ["{{base_url}}"],
+              "path": ["api","cards"],
+              "query": [{ "key": "profiles_type", "value": "mobile" }]
+            }
+          }
+        },
+        {
+          "name": "2. POST /api/cards — Tạo card mới",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/cards", "host": ["{{base_url}}"], "path": ["api","cards"] },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "first_name",    "value": "Nguyen Van",    "type": "text" },
+                { "key": "last_name",     "value": "Test",          "type": "text" },
+                { "key": "title",         "value": "CEO",           "type": "text" },
+                { "key": "company",       "value": "Công ty Test",  "type": "text" },
+                { "key": "bio",           "value": "Giới thiệu test", "type": "text" },
+                { "key": "email",         "value": "test@gmail.com","type": "text" },
+                { "key": "phone",         "value": "0901234567",    "type": "text" },
+                { "key": "profiles_type", "value": "mobile",        "type": "text" },
+                { "key": "industries",    "value": "[\"Technology\"]", "type": "text", "description": "JSON array of strings" },
+                { "key": "services",      "value": "[\"Consulting\"]", "type": "text", "description": "JSON array" },
+                { "key": "social_link",   "value": "{\"Facebook\":\"https://facebook.com/test\"}", "type": "text", "description": "JSON object" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "3. GET /api/cards/:id — Chi tiết card (track view)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/cards/{{card_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api","cards","{{card_id}}"]
+            }
+          }
+        },
+        {
+          "name": "3b. GET /api/cards/:id?fromScan=1 — Chi tiết card (track scan)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/cards/{{card_id}}?fromScan=1",
+              "host": ["{{base_url}}"],
+              "path": ["api","cards","{{card_id}}"],
+              "query": [{ "key": "fromScan", "value": "1" }]
+            }
+          }
+        },
+        {
+          "name": "3c. GET /api/cards/:serial?type=serial — Lookup theo QR serial",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/cards/{{qr_serial}}?type=serial",
+              "host": ["{{base_url}}"],
+              "path": ["api","cards","{{qr_serial}}"],
+              "query": [{ "key": "type", "value": "serial" }]
+            }
+          }
+        },
+        {
+          "name": "4. POST /api/cards/update/:id — Cập nhật card",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/cards/update/{{card_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api","cards","update","{{card_id}}"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "first_name",  "value": "Nguyen Van",    "type": "text" },
+                { "key": "last_name",   "value": "Updated",       "type": "text" },
+                { "key": "title",       "value": "CTO",           "type": "text" },
+                { "key": "company",     "value": "Công ty Updated","type": "text" },
+                { "key": "bio",         "value": "Bio updated",   "type": "text" },
+                { "key": "email",       "value": "updated@gmail.com", "type": "text" },
+                { "key": "phone",       "value": "0909999999",    "type": "text" },
+                { "key": "industries",  "value": "[{\"id\":1,\"name\":\"Technology\"}]", "type": "text", "description": "JSON array of {id, name}" },
+                { "key": "services",    "value": "[\"Consulting\"]", "type": "text" },
+                { "key": "social_link", "value": "{\"Facebook\":\"https://facebook.com/updated\",\"Zalo\":\"https://zalo.me/test\"}", "type": "text" },
+                { "key": "settings",    "value": "{\"phone_enable\":1,\"zalo_enable\":1,\"whatsapp_enable\":1}", "type": "text" },
+                { "key": "servicesInfo","value": "[]", "type": "text", "description": "JSON array of {title, description, purchase_link?, image?}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "5. DELETE /api/cards/:id — Xóa card",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/cards/{{card_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api","cards","{{card_id}}"]
+            }
+          }
+        },
+        {
+          "name": "6. GET /api/cards/industries — Danh sách ngành nghề",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/cards/industries?lang=vi",
+              "host": ["{{base_url}}"],
+              "path": ["api","cards","industries"],
+              "query": [{ "key": "lang", "value": "vi" }]
+            }
+          }
+        },
+        {
+          "name": "7. POST /api/cards/banner/:id — Upload banner",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/cards/banner/{{card_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api","cards","banner","{{card_id}}"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "banner_img", "type": "file", "src": "", "description": "Chọn file ảnh banner" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "8. POST /api/cards/link-card/:id — Link NFC card",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/cards/link-card/{{card_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api","cards","link-card","{{card_id}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"card_code\": \"{{qr_serial}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "9. POST /api/cards/:id/generate-deeplink — Firebase Dynamic Link",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/cards/{{card_id}}/generate-deeplink",
+              "host": ["{{base_url}}"],
+              "path": ["api","cards","{{card_id}}","generate-deeplink"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Check Card & Public Profile",
+      "item": [
+        {
+          "name": "10. POST /api/check-card/:cardCode — Kiểm tra QR serial (Public)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/check-card/{{qr_serial}}",
+              "host": ["{{base_url}}"],
+              "path": ["api","check-card","{{qr_serial}}"]
+            },
+            "description": "Public endpoint. Có thể gửi kèm token để nhận trạng thái 3 vs 4. 6 status codes: 1=HasProfile, 2=Available, 3=OwnedByAnother, 4=OwnerNoProfile, 5=HasAccountNoProfile, 6=Unknown"
+          }
+        },
+        {
+          "name": "10b. POST /api/check-card/:cardCode — Với auth token",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/check-card/{{qr_serial}}",
+              "host": ["{{base_url}}"],
+              "path": ["api","check-card","{{qr_serial}}"]
+            }
+          }
+        },
+        {
+          "name": "11. GET /api/businesses/public/:slug — Public profile",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/businesses/public/{{card_slug}}",
+              "host": ["{{base_url}}"],
+              "path": ["api","businesses","public","{{card_slug}}"]
+            }
+          }
+        },
+        {
+          "name": "11b. GET /api/businesses/public/:slug?fromScan=1 — Public profile (scan)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/businesses/public/{{card_slug}}?fromScan=1",
+              "host": ["{{base_url}}"],
+              "path": ["api","businesses","public","{{card_slug}}"],
+              "query": [{ "key": "fromScan", "value": "1" }]
+            }
+          }
+        },
+        {
+          "name": "11c. GET /api/businesses/public/:qrCode — Public profile via QR code",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/businesses/public/{{qr_serial}}?fromScan=1",
+              "host": ["{{base_url}}"],
+              "path": ["api","businesses","public","{{qr_serial}}"],
+              "query": [{ "key": "fromScan", "value": "1" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Appointments",
+      "item": [
+        {
+          "name": "A1. GET /api/appointments — Lịch hẹn nhận được",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/appointments",
+              "host": ["{{base_url}}"],
+              "path": ["api","appointments"]
+            }
+          }
+        },
+        {
+          "name": "A1b. GET /api/appointments?requested=1 — Lịch hẹn đã đặt",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/appointments?requested=1",
+              "host": ["{{base_url}}"],
+              "path": ["api","appointments"],
+              "query": [{ "key": "requested", "value": "1" }]
+            }
+          }
+        },
+        {
+          "name": "A2. POST /api/appointments/add — Tạo lịch hẹn",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/appointments/add",
+              "host": ["{{base_url}}"],
+              "path": ["api","appointments","add"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"business_id\": {{card_id}},\n  \"name\": \"Nguyen Van Test\",\n  \"email\": \"test@gmail.com\",\n  \"phone\": \"0901234567\",\n  \"date\": \"2026-04-01\",\n  \"time\": \"09:00\",\n  \"title\": \"Tư vấn sản phẩm\",\n  \"note\": \"Ghi chú test\"\n}"
+            }
+          }
+        },
+        {
+          "name": "A3. GET /api/appointments/:id — Chi tiết lịch hẹn",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/appointments/1",
+              "host": ["{{base_url}}"],
+              "path": ["api","appointments","1"]
+            }
+          }
+        },
+        {
+          "name": "A4. POST /api/appointments/update/:id — Cập nhật lịch hẹn",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/appointments/update/1",
+              "host": ["{{base_url}}"],
+              "path": ["api","appointments","update","1"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"date\": \"2026-04-02\",\n  \"time\": \"10:00\",\n  \"note\": \"Ghi chú updated\"\n}"
+            }
+          }
+        },
+        {
+          "name": "A5. POST /api/appointments/accept/:id — Chấp nhận",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/appointments/accept/1",
+              "host": ["{{base_url}}"],
+              "path": ["api","appointments","accept","1"]
+            }
+          }
+        },
+        {
+          "name": "A6. POST /api/appointments/reject/:id — Từ chối",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/appointments/reject/1",
+              "host": ["{{base_url}}"],
+              "path": ["api","appointments","reject","1"]
+            }
+          }
+        },
+        {
+          "name": "A7. POST /api/appointments/delete/:id — Xóa lịch hẹn",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/appointments/delete/1",
+              "host": ["{{base_url}}"],
+              "path": ["api","appointments","delete","1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Public Appointments (Google Calendar Webhooks)",
+      "item": [
+        {
+          "name": "PA1. POST /api/public-appointments/add — Google Calendar tạo",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/public-appointments/add",
+              "host": ["{{base_url}}"],
+              "path": ["api","public-appointments","add"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"business_id\": {{card_id}},\n  \"name\": \"Google Calendar User\",\n  \"email\": \"calendar@gmail.com\",\n  \"date\": \"2026-04-01\",\n  \"time\": \"09:00\",\n  \"google_calendar_id\": \"gcal_event_id_here\"\n}"
+            }
+          }
+        },
+        {
+          "name": "PA2. POST /api/public-appointments/update — Google Calendar cập nhật",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/public-appointments/update",
+              "host": ["{{base_url}}"],
+              "path": ["api","public-appointments","update"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"google_calendar_id\": \"gcal_event_id_here\",\n  \"date\": \"2026-04-03\",\n  \"time\": \"11:00\"\n}"
+            }
+          }
+        },
+        {
+          "name": "PA3. POST /api/public-appointments/delete — Google Calendar xóa",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/public-appointments/delete",
+              "host": ["{{base_url}}"],
+              "path": ["api","public-appointments","delete"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"google_calendar_id\": \"gcal_event_id_here\"\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

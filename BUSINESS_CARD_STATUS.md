@@ -1,6 +1,6 @@
 # Business Card API — Trạng Thái Hiện Tại
 
-> Cập nhật lần cuối: 2026-03-16
+> Cập nhật lần cuối: 2026-03-19
 
 ---
 
@@ -11,9 +11,9 @@
 | Endpoint | Method | Mô tả | Ghi chú |
 |---|---|---|---|
 | `/api/cards` | GET | List tất cả cards của user | Filter `?profiles_type=` |
-| `/api/cards` | POST | Tạo card mới | Logo upload, auto-slug, auto QR gen |
+| `/api/cards` | POST | Tạo card mới | Logo + service_image_* upload, auto-slug, auto QR gen |
 | `/api/cards/:id` | GET | Lấy chi tiết card | Tracking view/scan, serial lookup `?type=serial` |
-| `/api/cards/update/:id` | POST | Cập nhật card | Logo, banner, media, services, socials, contact_info, hours — 1 request |
+| `/api/cards/update/:id` | POST | Cập nhật card | Logo + service_image_* + testimonial_image_* upload, media, services, socials, contact_info, hours — 1 request |
 | `/api/cards/:id` | DELETE | Xoá card | Cascade 8 bảng liên quan + unlink QR |
 | `/api/cards/industries` | GET | Danh sách ngành nghề predefined | `?lang=vi` (default vi), public trong AuthGuard |
 | `/api/cards/banner/:id` | POST | Upload banner riêng | — |
@@ -22,9 +22,11 @@
 
 ### Check Card — `CheckCardController` (`/api/check-card`)
 
+> ⏸ **Tạm hoãn (xử lý sau)** — Logic 6 status codes cần verify lại với PHP source. Tests bị skip.
+
 | Endpoint | Method | Mô tả | Ghi chú |
 |---|---|---|---|
-| `/api/check-card/:cardCode` | POST | Kiểm tra trạng thái QR vật lý | 6 status codes, `OptionalAuthGuard` |
+| `/api/check-card/:cardCode` | POST | Kiểm tra trạng thái QR vật lý | 6 status codes, `OptionalAuthGuard` — **⏸ pending test** |
 
 ### Public Profile — `BusinessesPublicController` (`/api/businesses`)
 
@@ -98,6 +100,36 @@ GET /api/cards/:id/analytics
 
 ---
 
+## ✅ Đã fix — profile_url nhất quán
+
+> Fix: 2026-03-18
+
+### Vấn đề (PHP bug)
+
+PHP `CardController` trả về `profile_url` không nhất quán giữa các endpoint:
+
+| PHP Endpoint | Giá trị trả về | Đúng/Sai |
+|---|---|---|
+| `index()` (GET list) | `url('profile/' . $slug)` → **có** `/profile/` | ✅ |
+| `detail()` (GET :id) | `url('profile/' . $slug)` → **có** `/profile/` | ✅ |
+| `add()` (POST create) | `url($slug)` → **không có** `/profile/` | ❌ Bug PHP |
+| `update()` (POST update) | `url($slug)` → **không có** `/profile/` | ❌ Bug PHP |
+
+### Fix trong NestJS
+
+**Tất cả endpoint** đều dùng `profileUrl()` → `${base}/profile/${slug}` (nhất quán).
+
+```
+GET /api/cards          → profile_url: "https://app.incard.vn/profile/nguyen-van-a"
+GET /api/cards/:id      → profile_url: "https://app.incard.vn/profile/nguyen-van-a"
+POST /api/cards         → profile_url: "https://app.incard.vn/profile/nguyen-van-a"  ← đã fix
+POST /api/cards/update  → profile_url: "https://app.incard.vn/profile/nguyen-van-a"  ← đã fix
+```
+
+> `profileUrlWithPrefix` là alias của `profileUrl` — cả hai đều trả về cùng giá trị.
+
+---
+
 ## ⚠️ Bug đã phát hiện — Slug Integrity
 
 > Phát hiện: 2026-03-17
@@ -142,7 +174,68 @@ vy-nguyen-2: 4 bản ghi
 
 ---
 
+## ✅ Đã fix — Service/Testimonial image upload (2026-03-19)
+
+### Vấn đề
+
+`POST /api/cards` và `POST /api/cards/update/:id` dùng `FileInterceptor('logo')` — chỉ xử lý đúng 1 field file tên `logo`. Khi frontend gửi thêm `service_image_0`, `testimonial_image_0`,... Multer throw `400 Unexpected field`.
+
+### Fix
+
+**`businesses.controller.ts`** — cả 2 endpoints:
+- `FileInterceptor('logo')` → `FileFieldsInterceptor([logo, service_image_0..9, testimonial_image_0..9])`
+- `@UploadedFile()` → `@UploadedFiles()` — nhận map tất cả files
+
+**`businesses.service.ts`** — `create()` và `update()`:
+- Inject URL ảnh từ `service_image_{i}` vào `servicesInfo[i].image` trước khi lưu DB
+- Inject URL ảnh từ `testimonial_image_{i}` vào `testimonials[i].image` (update only)
+- File lưu tại `storage/app/public/service_images/` và `storage/app/public/testimonial_images/`
+- URL trả về: `{APP_URL}/storage/service_images/{filename}`
+
+> ⚠️ **Lưu ý cho FE**: field `service_image_{i}` phải có index tương ứng với vị trí của service trong mảng `servicesInfo`. Ví dụ: `servicesInfo[2]` có ảnh mới → gửi field `service_image_2`.
+
+---
+
+## ✅ Đã fix — servicesInfo / industries (2026-03-18)
+
+### Issue 2 — servicesInfo field name
+
+**Vấn đề**: FE gửi `services` cho product cards, nhưng:
+- PHP dùng `servicesInfo` cho product cards (→ services table)
+- `services` field trong `businesses` table là service category IDs (khác hoàn toàn)
+- BE create() vừa ghi `dto.services` vào `businesses.services` column (sai) vừa upsert vào servicesTable (đúng) → double-write bug
+
+**Fix**:
+- **FE** (`create/page.tsx`, `edit/page.tsx`): đổi `formData.append('services', ...)` → `formData.append('servicesInfo', ...)`
+- **BE DTO** (`create-business.dto.ts`, `update-business.dto.ts`): thêm `servicesInfo` field riêng
+- **BE service create()**: bỏ ghi vào `businesses.services` column cho product cards, ưu tiên `dto.servicesInfo ?? dto.services`
+- **BE service update()**: priority chain `dto.servicesInfo → dto.services → rawBody?.servicesInfo`
+
+### Issue 3 — Industries real DB IDs (PHP resolveIndustries() parity)
+
+**Vấn đề**: FE gửi `industries.map(t => t.name)` (chỉ tên), BE lưu `["Finance","Technology"]` với index IDs (0,1,2). PHP `resolveIndustries()` lookup real IDs từ `industry_category` table và lưu `{"1":"Finance","5":"Technology"}`.
+
+**Fix**:
+- **FE** (`create/page.tsx`, `edit/page.tsx`): gửi `industries.map(t => ({ id: t.id, name: t.name }))` — full objects
+- **BE service**: thêm `resolveIndustries()` private method:
+  - Numeric/real IDs → lookup `industry_category` table lấy name
+  - String names (free text, `id` bắt đầu bằng `new_`) → find-or-create trong `industry_category`
+  - Trả về `{id: name}` map → lưu vào `businesses.category` column
+
+### Issue 1 — Industries suggestion dropdown truncated
+
+**Vấn đề**: `div.absolute` (dropdown) nằm trong `div.relative.flex-1.min-w-32` (input wrapper). Khi tags tích lũy, `flex-1` div shrinks → dropdown bị truncate.
+
+**Fix** (`IndustriesTagInput.tsx`):
+- Chuyển `relative` lên wrapper ngoài (`div.space-y-1.5`)
+- Bỏ `relative` khỏi input wrapper (`div.flex-1.min-w-32`)
+- Move dropdown `div.absolute` ra ngoài tag container, thành sibling của label/border-box
+
+---
+
 ## 🔄 Backlog (Làm sau)
+
+> `checkSerialNumberOfCard` (POST `/api/check-card/:cardCode`) — implement có sẵn, nhưng test spec cần verify 6 status codes với PHP source trước khi viết. Xem `CheckCardController` trong `businesses.controller.ts`.
 
 | Item | Lý do hoãn |
 |---|---|

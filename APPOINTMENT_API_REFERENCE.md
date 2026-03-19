@@ -11,15 +11,16 @@
 | Method | Endpoint | Auth | Mô tả |
 |--------|----------|------|-------|
 | GET | `/api/appointments` | ✅ JWT | Danh sách lịch hẹn |
-| POST | `/api/appointments/add` | ✅ JWT | Tạo lịch hẹn mới |
+| POST | `/api/appointments/add` | ✅ JWT | Tạo lịch hẹn mới (mobile app) |
 | GET | `/api/appointments/:id` | ✅ JWT | Chi tiết lịch hẹn |
 | POST | `/api/appointments/update/:id` | ✅ JWT | Cập nhật lịch hẹn |
 | POST | `/api/appointments/accept/:id` | ✅ JWT | Chấp nhận lịch hẹn |
 | POST | `/api/appointments/reject/:id` | ✅ JWT | Từ chối lịch hẹn |
 | POST | `/api/appointments/delete/:id` | ✅ JWT | Xóa lịch hẹn |
-| POST | `/api/public-appointments/add` | ❌ Public | Tạo từ Google Calendar webhook |
-| POST | `/api/public-appointments/update` | ❌ Public | Cập nhật từ Google Calendar webhook |
-| POST | `/api/public-appointments/delete` | ❌ Public | Xóa từ Google Calendar webhook |
+| POST | `/api/public-appointments/book` | ❌ Public | Đặt lịch từ public profile page (guest) |
+| POST | `/api/public-appointments/add` | ❌ Public | Tạo từ Google Calendar sync (mobile) |
+| POST | `/api/public-appointments/update` | ❌ Public | Cập nhật từ Google Calendar sync |
+| POST | `/api/public-appointments/delete` | ❌ Public | Xóa từ Google Calendar sync |
 
 ---
 
@@ -366,7 +367,68 @@ Authorization: Bearer <token>
 
 ---
 
-## 8. POST `/api/public-appointments/add`
+## 8. POST `/api/public-appointments/book`
+
+**Mô tả:** Đặt lịch hẹn từ **public profile page** (trang `/profile/{slug}`). **Không cần auth — dành cho guest.**
+
+Match PHP behavior: `AppointmentDeatailController@store` (web blade).
+
+**Request:**
+```
+POST /api/public-appointments/book
+Content-Type: application/json
+
+{
+  "business_id": 42,           (required) — ID của business card
+  "name": "Nguyen Van A",      (required)
+  "email": "a@gmail.com",      (optional)
+  "phone": "0901234567",       (optional)
+  "date": "2026-03-10",        (optional)
+  "time": "09:00",             (optional)
+  "note": "Ghi chú"            (optional)
+}
+```
+
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Tạo lịch hẹn thành công!",
+  "data": {
+    "appointment_id": 1
+  }
+}
+```
+
+**Response (error):**
+```json
+{
+  "status": false,
+  "message": "business_id la bat buoc",
+  "data": null
+}
+```
+
+**Side effects:**
+- `UPDATE businesses SET total_appointment = total_appointment + 1`
+- Gửi email thông báo đến owner card (địa chỉ email của chủ card)
+- Gửi email xác nhận đến người đặt (nếu `email` được cung cấp)
+
+**Khác với `/appointments/add` (mobile):**
+
+| | `/public-appointments/book` (guest web) | `/appointments/add` (mobile auth) |
+|--|--|--|
+| Auth | ❌ Không cần | ✅ JWT required |
+| Field ID | `business_id` | `card_id` |
+| `user_requested` | `null` | userId người đặt |
+| Email notification | ✅ Gửi email | ❌ Không |
+| FCM notification | ❌ Không | ✅ Gửi FCM |
+| BusinessHistory | ❌ Không ghi | ✅ Ghi `type='booked'` |
+| Response data | `{ appointment_id }` | `{ appointment: {...} }` |
+
+---
+
+## 9. POST `/api/public-appointments/add`
 
 **Mô tả:** Tạo lịch hẹn từ Google Calendar webhook. **Không cần auth.**
 
@@ -418,7 +480,7 @@ Content-Type: application/json
 
 ---
 
-## 9. POST `/api/public-appointments/update`
+## 10. POST `/api/public-appointments/update`
 
 **Mô tả:** Cập nhật lịch hẹn từ Google Calendar webhook. Tìm appointment theo `user_id` + `google_calendar_id`.
 
@@ -456,7 +518,7 @@ Content-Type: application/json
 
 ---
 
-## 10. POST `/api/public-appointments/delete`
+## 11. POST `/api/public-appointments/delete`
 
 **Mô tả:** Xóa lịch hẹn từ Google Calendar webhook.
 
@@ -484,6 +546,25 @@ Content-Type: application/json
 
 ## Flow đầy đủ: Đặt lịch hẹn
 
+### Flow A — Guest từ public profile page (web/CMS frontend)
+```
+1. Guest xem profile card của User A
+   → GET /api/businesses/public/{slug}
+   → Response có is_enable_appoinment: 1 → hiện form đặt lịch
+
+2. Guest điền form và submit
+   → POST /api/public-appointments/book
+   → body: { business_id, name, email, phone, date, time, note }
+   → Side effects:
+     ├── INSERT appointment (status='pending', created_by=ownerA, user_requested=NULL)
+     ├── UPDATE businesses SET total_appointment++
+     ├── Email → owner card: "Regarding new appointment"
+     └── Email → guest (nếu có email): "Regarding new appointment"
+
+3. Response trả về { appointment_id } — guest có thể dùng để sync Google Calendar
+```
+
+### Flow B — User đã login (mobile app)
 ```
 1. User B xem profile card của User A
    → GET /api/businesses/public/{slug}
@@ -538,3 +619,9 @@ Content-Type: application/json
 | Message tạo lịch | `"Tạo lịch hẹn thành công!"` | Giống (có dấu) | ✅ Đúng |
 | Message cập nhật lịch | `"Cập nhật lịch hẹn thành công!"` | Giống (có dấu) | ✅ Đúng |
 | Message xóa lịch | `"Xóa lịch hẹn thành công!"` | Giống (có dấu) | ✅ Đúng |
+| `/public-appointments/book` param | `business_id` | `business_id` (web form) | ✅ Đúng |
+| `/public-appointments/book` user_requested | `null` | `null` (guest) | ✅ Đúng |
+| `/public-appointments/book` email | Gửi cho owner + guest | Giống | ✅ Đúng |
+| `/public-appointments/book` FCM | Không gửi | Không gửi | ✅ Đúng |
+| `/public-appointments/book` BusinessHistory | Không ghi | Không ghi | ✅ Đúng |
+| `/public-appointments/book` response | `{ appointment_id }` | `{ appointment_id }` | ✅ Đúng |

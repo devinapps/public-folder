@@ -1,6 +1,6 @@
 # Business Card & QR API Reference
 
-**Last updated:** 2026-03-17 (Slug integrity fixes: sequential suffix, duplicate cleanup, findBySlug ordering)
+**Last updated:** 2026-03-19 (File upload fix: FileFieldsInterceptor — create + update endpoints now accept service_image_* and testimonial_image_*)
 **Base URL:** `{APP_URL}/api`
 **Auth:** `Authorization: Bearer <jwt_token>` (trừ endpoint public và check-card)
 
@@ -142,8 +142,15 @@ services: ["Dev"]               (optional, JSON array)
 need_services: []               (optional, JSON array)
 social_link: {"Facebook":"url"} (optional, JSON object)
 qrcode_serial: "ABC123"         (optional — link QR card ngay khi tạo)
-logo: <file>                    (optional, multipart)
+logo: <file>                    (optional, multipart — field name: "logo")
+service_image_0: <file>         (optional, multipart — ảnh cho servicesInfo[0])
+service_image_1: <file>         (optional, multipart — ảnh cho servicesInfo[1])
+... (service_image_0 → service_image_9, tối đa 10 dịch vụ có ảnh)
 ```
+
+> **Lưu ý file upload:** Endpoint dùng `FileFieldsInterceptor` — chỉ accept các field: `logo`, `service_image_0` → `service_image_9`. Gửi field file không đúng tên sẽ bị từ chối `400 Unexpected field`.
+>
+> **Image URL trả về:** Sau khi upload, `product_services[i].image` = `{APP_URL}/storage/service_images/{filename}`.
 
 **Response:**
 ```json
@@ -323,8 +330,19 @@ social_link: {"Zalo": "url"}   (optional, JSON object — gửi value "" để x
 settings: {...}                 (optional, JSON object)
 media: [...]                    (optional, JSON array — product media)
 servicesInfo: [...]             (optional, JSON array — product services)
-logo: <file>                    (optional, multipart)
+                                  Format: [{ title, description, purchase_link?, image? }]
+                                  image: URL ảnh cũ (giữ nguyên nếu không upload mới)
+logo: <file>                    (optional, multipart — field name: "logo")
+service_image_0: <file>         (optional, multipart — ảnh cho servicesInfo[0])
+service_image_1: <file>         (optional, multipart — ảnh cho servicesInfo[1])
+... (service_image_0 → service_image_9, tối đa 10 dịch vụ có ảnh)
+testimonial_image_0: <file>     (optional, multipart — ảnh cho testimonials[0])
+... (testimonial_image_0 → testimonial_image_9)
 ```
+
+> **Lưu ý file upload:** Endpoint dùng `FileFieldsInterceptor` — tất cả các field file (`logo`, `service_image_*`, `testimonial_image_*`) phải gửi đúng tên field. Gửi field file không đúng tên sẽ bị từ chối `400 Unexpected field`.
+>
+> **Image URL trả về:** Sau khi upload, `product_services[i].image` = `{APP_URL}/storage/service_images/{filename}` và `testimonials[i].image` = `{APP_URL}/storage/testimonial_images/{filename}`.
 
 **Response:**
 ```json
