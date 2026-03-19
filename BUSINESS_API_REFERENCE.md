@@ -1,6 +1,6 @@
 # Business Card & QR API Reference
 
-**Last updated:** 2026-03-11 (Phase 1-3 fixes: Dynamic queries, Serial QR lookup, Cascade delete implemented)
+**Last updated:** 2026-03-17 (Slug integrity fixes: sequential suffix, duplicate cleanup, findBySlug ordering)
 **Base URL:** `{APP_URL}/api`
 **Auth:** `Authorization: Bearer <jwt_token>` (trừ endpoint public và check-card)
 
@@ -196,6 +196,7 @@ logo: <file>                    (optional, multipart)
 **Notes so sánh PHP:**
 - `profile_url` **KHÔNG có** `/profile/` prefix — đúng PHP `add()` behavior.
 - **KHÔNG có** `profile_qr`, `contact_qr`, `deeplink`, `banner_img`, `tags`, `owner_id`, `is_my_card`.
+- `slug` khi tạo mới: nếu `nguyen-van-a` đã tồn tại → `nguyen-van-a-1`, `nguyen-van-a-2`, ..., `nguyen-van-a-100` (sequential, match PHP behavior). **Trước đây dùng random 4-digit — đã fix 2026-03-17**.
 
 ---
 
@@ -745,6 +746,36 @@ Serve tại: GET /storage/contact_qr/{slug}.png
    ├── Đã có app InCard → Mở thẳng vào app
    └── Chưa có app → Redirect về web URL (afl/ifl/ofl fallback)
 ```
+
+---
+
+## Slug Generation Logic
+
+### createSlug algorithm (businesses.service.ts)
+
+```
+Input: first_name + " " + last_name
+Step 1: slugify(text, { lower: true, locale: 'vi', strict: true })
+        "Nguyễn Văn A" → "nguyen-van-a"
+
+Step 2: Check DB — if "nguyen-van-a" not taken → return "nguyen-van-a"
+
+Step 3: Sequential suffix loop (matches incard-biz PHP behavior):
+        "nguyen-van-a-1" → taken? try next
+        "nguyen-van-a-2" → taken? try next
+        ...
+        "nguyen-van-a-100" → if still taken → throw Error
+
+Note: findBySlug() uses ORDER BY id ASC LIMIT 1 — trả về record cũ nhất khi có duplicate (phòng hờ data cũ).
+```
+
+### Slug integrity fix (2026-03-17)
+
+| Vấn đề | Trạng thái |
+|--------|-----------|
+| 26 bản ghi duplicate slug trong DB | ✅ Cleanup — đã gán suffix `-2`, `-3`, ... |
+| `createSlug` dùng random 4-digit suffix | ✅ Đổi sang sequential `-1`, `-2`, ... (match PHP) |
+| `findBySlug` không có ORDER BY | ✅ Thêm `ORDER BY id ASC LIMIT 1` |
 
 ---
 

@@ -1,9 +1,9 @@
 # Email API Documentation
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Base URL:** `http://localhost:3001/api`
 **Authentication:** JWT Bearer Token (Admin role required)
-**Last Updated:** 2026-03-13
+**Last Updated:** 2026-03-17
 
 > **📧 New:** For **Email Campaign features** (campaign history, tracking, scheduling), see [EMAIL_CAMPAIGN_API.md](EMAIL_CAMPAIGN_API.md). This document covers basic email sending and template management only.
 
@@ -23,6 +23,7 @@
   - [Update Template](#update-template)
   - [Delete Template](#delete-template)
 - [Recipient Filter Reference](#recipient-filter-reference)
+- [Upload Image for Email Body](#upload-image-for-email-body)
 - [Content Resolution Logic](#content-resolution-logic)
 - [Database Schema](#database-schema)
 - [Environment Variables](#environment-variables)
@@ -656,6 +657,72 @@ Cung cấp `campaign_name` trong request để override fallback:
 ```
 
 **Kết quả:** Campaign record sẽ có `name = "Newsletter Tháng 3 - Khuyến mãi 50%"`
+
+---
+
+## Upload Image for Email Body
+
+Upload ảnh trực tiếp từ CMS rich editor. Ảnh được lưu vào server và trả về public URL để chèn vào email body.
+
+```http
+POST /api/emails/upload-image
+Content-Type: multipart/form-data
+```
+
+### Request
+
+| Field | Type | Bắt buộc | Mô tả |
+|---|---|---|---|
+| `file` | `binary` | Có | File ảnh (PNG, JPG, GIF, WEBP). Tối đa **10MB** |
+
+### Response `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "url": "http://localhost:3001/storage/email-images/a1b2c3d4-uuid.png"
+  }
+}
+```
+
+### Error Responses
+
+| HTTP | Message | Nguyên nhân |
+|---|---|---|
+| `400` | `Chỉ chấp nhận file ảnh` | File không phải image (PDF, ZIP, v.v.) |
+| `400` | `Vui lòng chọn file ảnh` | Không gửi file trong request |
+
+### Storage
+
+- **Lưu tại:** `storage/app/public/email-images/`
+- **URL prefix:** `/storage/email-images/` (served bởi NestJS static assets)
+- **Filename:** UUID random — tránh trùng lặp
+- **Production:** Đổi `APP_URL` trong `.env` thành domain thật (e.g. `https://api.incard.biz`)
+
+### Base64 Auto-Conversion
+
+Khi user paste ảnh vào rich editor mà **không có** upload handler, TipTap sẽ lưu ảnh dưới dạng `data:image/...;base64,...` trong HTML body.
+
+**Tại thời điểm gửi email**, hệ thống **tự động** scan body HTML và convert tất cả base64 images thành hosted URLs:
+
+```
+<img src="data:image/png;base64,iVBORw0KGgo...133KB...">
+                    ↓ auto-convert at send time
+<img src="http://localhost:3001/storage/email-images/uuid.png">
+```
+
+Điều này đảm bảo:
+- Gmail không bị clip (giới hạn 102KB)
+- Tracking pixel và unsubscribe link luôn hiển thị
+- Email size nhỏ gọn (~60 chars URL thay vì 133KB base64)
+
+### Frontend Integration (CMS)
+
+Rich editor trong CMS đã tích hợp sẵn:
+- **Toolbar button "Add Image"** — mở file picker, upload qua API, chèn URL
+- **Paste image** (Ctrl+V screenshot) — tự động upload, chèn URL
+- **Drag & drop** — tự động upload, chèn URL
 
 ---
 

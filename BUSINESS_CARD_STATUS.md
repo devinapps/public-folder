@@ -98,6 +98,50 @@ GET /api/cards/:id/analytics
 
 ---
 
+## ⚠️ Bug đã phát hiện — Slug Integrity
+
+> Phát hiện: 2026-03-17
+
+### Vấn đề
+
+| # | Vấn đề | Mức độ |
+|---|--------|--------|
+| 1 | **DB có duplicate slugs** — nhiều bản ghi cùng slug, `findBySlug()` trả về record đầu tiên → hiển thị sai profile | 🔴 Critical |
+| 2 | **createSlug dùng random 4-digit suffix** thay vì sequential `-1`,`-2` như incard-biz PHP → khó đoán, không nhất quán | 🟡 Medium |
+| 3 | **Race condition** trong createSlug: 2 request đồng thời cùng generate slug trùng trước khi write DB | 🟡 Medium |
+| 4 | **Một số slug bị lưu dạng JSON string** (data migration lỗi từ incard-biz) | 🟡 Medium |
+| 5 | **Không có UNIQUE constraint** trên column `slug` ở DB | 🔴 Critical |
+
+### Thống kê duplicate slugs (query 2026-03-17)
+
+```
+vy-nguyen-3: 7 bản ghi (ids: 2187-2193)
+vy-nguyen-4: 6 bản ghi (ids: 2194-2199)
+shaikh-mohsin-shaikh: 4 bản ghi
+vy-nguyen-1: 4 bản ghi
+vy-nguyen-2: 4 bản ghi
+... (tổng 10+ slug bị duplicate)
+```
+
+### So sánh PHP vs NestJS slug generation
+
+| | incard-biz (PHP) | NestJS (hiện tại) |
+|---|---|---|
+| Base slug | `Str::slug(title + last_name, '-')` | `slugify(first_name + last_name, {lower, locale:'vi', strict})` |
+| Duplicate suffix | Sequential: `-1`, `-2`, ... `-100` | Random 4-digit: `-4823`, `-1247` |
+| DB check | `LIKE slug%` (lấy hết liên quan 1 query) | Exact match per candidate |
+| Route collision check | ✅ Kiểm tra Laravel routes | ❌ Không có |
+| Race condition | ❌ Có thể xảy ra | ❌ Có thể xảy ra |
+
+### Plan fix
+
+1. **Thay createSlug sang sequential suffix** (match PHP: `-1`, `-2`, ..., `-100`)
+2. **Fix findBySlug** thêm `ORDER BY id ASC LIMIT 1` để consistent khi có duplicate
+3. **Data cleanup** — cập nhật duplicate slugs trong DB thêm suffix `-2`, `-3`, v.v.
+4. **Thêm UNIQUE constraint** vào `businesses.slug` sau khi cleanup xong
+
+---
+
 ## 🔄 Backlog (Làm sau)
 
 | Item | Lý do hoãn |

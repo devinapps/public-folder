@@ -1260,7 +1260,7 @@ Thêm vào `.env`:
 
 ```env
 # Phase A
-BASE_URL=https://api.incard.vn  # Used for unsubscribe links
+APP_URL=https://api.incard.vn  # Used for unsubscribe links, tracking URLs, and email image hosting
 UNSUBSCRIBE_SECRET=your-random-secret-at-least-32-chars  # HMAC key
 
 # Phase C: Bull Queue (Redis)
