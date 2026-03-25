@@ -1,9 +1,9 @@
 # Email API Documentation
 
-**Version:** 1.2.0
+**Version:** 1.5.0
 **Base URL:** `http://localhost:3001/api`
 **Authentication:** JWT Bearer Token (Admin role required)
-**Last Updated:** 2026-03-17
+**Last Updated:** 2026-03-25
 
 > **📧 New:** For **Email Campaign features** (campaign history, tracking, scheduling), see [EMAIL_CAMPAIGN_API.md](EMAIL_CAMPAIGN_API.md). This document covers basic email sending and template management only.
 
@@ -25,6 +25,8 @@
 - [Recipient Filter Reference](#recipient-filter-reference)
 - [Upload Image for Email Body](#upload-image-for-email-body)
 - [Content Resolution Logic](#content-resolution-logic)
+- [Email Signatures](#email-signatures)
+- [AI Settings & Knowledge Base](#ai-settings--knowledge-base)
 - [Database Schema](#database-schema)
 - [Environment Variables](#environment-variables)
 
@@ -161,6 +163,9 @@ POST /api/emails/send
 | `url_images` | `array` | Không | Danh sách ảnh URL để inject vào body: `[{ filename: string, url: string }, ...]` — phải public URL |
 | `list_id` | `number` | Không | **[Phase D]** Gửi cho toàn bộ members trong Email List (xem [EMAIL_CAMPAIGN_API.md](EMAIL_CAMPAIGN_API.md#phase-d--email-list-management)) |
 | `is_can_test` | `boolean` | Không | **[Phase D]** Nếu `true` → chỉ gửi cho users có `is_can_test=1`. Kết hợp được với bất kỳ filter nào (trừ `user_emails`) |
+| `from_name` | `string` | Không | Override tên người gửi hiển thị (e.g. `"Tâm Hồ từ InCard"`). Ưu tiên: `dto.from_name` → `template.from_name` → `MAIL_FROM_NAME` từ `.env` |
+| `from_email` | `string` | Không | Override địa chỉ email gửi thực sự. Phải là domain đã verify trên SendGrid (`@incard.biz` hoặc `@inapps.net`). Ưu tiên: `dto.from_email` → `template.from_email` → `MAIL_FROM_ADDRESS` từ `.env` |
+| `reply_to` | `string` | Không | Override địa chỉ Reply-To email. Ưu tiên: `dto.reply_to` → `template.reply_to` → _(không set header)_ |
 
 > **(\*)** Khi có `template_id`: `subject` và `body` là **optional** (dùng để override nội dung từ template).
 > Khi không có `template_id`: cả hai là **bắt buộc**.
@@ -351,7 +356,9 @@ GET /api/emails/templates
     {
       "id": 2,
       "name": "Weekly Report",
-      "from": "report@incard.vn",
+      "from_name": "Báo Cáo Tuần từ InCard",
+      "from_email": "report@incard.biz",
+      "reply_to": null,
       "created_by": 1,
       "created_at": "2024-02-01T10:00:00.000Z",
       "updated_at": "2024-02-01T10:00:00.000Z",
@@ -403,7 +410,9 @@ GET /api/emails/templates/:id
   "data": {
     "id": 1,
     "name": "Welcome Email",
-    "from": null,
+    "from_name": null,
+    "from_email": null,
+    "reply_to": null,
     "created_by": 1,
     "created_at": "2024-01-15T08:00:00.000Z",
     "updated_at": "2024-01-15T08:00:00.000Z",
@@ -452,7 +461,9 @@ POST /api/emails/templates
 | Field | Type | Bắt buộc | Mô tả |
 |---|---|---|---|
 | `name` | `string` | Có | Tên định danh template |
-| `from` | `string` | Không | Địa chỉ email người gửi (override `MAIL_FROM_ADDRESS` trong `.env`) |
+| `from_name` | `string` | Có | Tên người gửi hiển thị (e.g. `"Tâm Hồ từ InCard"`). Dùng kết hợp với `from_email` hoặc `MAIL_FROM_ADDRESS` làm From header |
+| `from_email` | `string` | Không | Địa chỉ email gửi thực sự. Phải là domain đã verify trên SendGrid (`@incard.biz` hoặc `@inapps.net`). Để trống = dùng `MAIL_FROM_ADDRESS` từ env |
+| `reply_to` | `string` | Không | Reply-To email (e.g. `"tamho@incard.biz"`). Khi set, email client sẽ reply về địa chỉ này. Chỉ cho phép `@incard.biz` hoặc `@inapps.net` |
 | `langs` | `LangItem[]` | Có | Mảng nội dung theo ngôn ngữ (có thể để `[]`) |
 
 **`LangItem`:**
@@ -468,7 +479,9 @@ POST /api/emails/templates
 ```json
 {
   "name": "Welcome Email",
-  "from": "hello@incard.vn",
+  "from_name": "Đội ngũ InCard",
+  "from_email": "hello@incard.biz",
+  "reply_to": "support@incard.biz",
   "langs": [
     {
       "lang": "vi",
@@ -484,6 +497,12 @@ POST /api/emails/templates
 }
 ```
 
+**Email header result:**
+```
+From: "Đội ngũ InCard" <hello@incard.biz>
+Reply-To: support@incard.biz
+```
+
 #### Response `201 Created`
 
 ```json
@@ -493,7 +512,9 @@ POST /api/emails/templates
   "data": {
     "id": 5,
     "name": "Welcome Email",
-    "from": "hello@incard.vn",
+    "from_name": "Đội ngũ InCard",
+    "from_email": "hello@incard.biz",
+    "reply_to": "support@incard.biz",
     "created_by": 7,
     "created_at": "2026-02-24T10:30:00.000Z",
     "updated_at": "2026-02-24T10:30:00.000Z",
@@ -528,7 +549,9 @@ PUT /api/emails/templates/:id
 | Field | Type | Mô tả |
 |---|---|---|
 | `name` | `string` | Đổi tên template |
-| `from` | `string` | Đổi địa chỉ người gửi |
+| `from_name` | `string` | Đổi tên người gửi hiển thị (From header) |
+| `from_email` | `string` | Đổi địa chỉ email gửi thực sự (`@incard.biz` hoặc `@inapps.net`) |
+| `reply_to` | `string` | Đổi địa chỉ Reply-To email (`@incard.biz` hoặc `@inapps.net`) |
 | `langs` | `LangItem[]` | Thay toàn bộ langs — **xóa cũ, thêm mới** |
 
 > **Lưu ý quan trọng về `langs`:** Nếu truyền `langs`, toàn bộ langs cũ sẽ bị **xóa** và thay bằng danh sách mới. Không truyền `langs` → langs hiện tại được **giữ nguyên**.
@@ -563,7 +586,9 @@ PUT /api/emails/templates/:id
   "data": {
     "id": 1,
     "name": "Welcome Email v2",
-    "from": null,
+    "from_name": null,
+    "from_email": null,
+    "reply_to": null,
     "created_by": 1,
     "created_at": "2024-01-15T08:00:00.000Z",
     "updated_at": "2026-02-24T11:00:00.000Z",
@@ -842,6 +867,399 @@ Có template_id?
 
 ---
 
+## Sender Identity (from_name + from_email + Reply-To)
+
+### Email Header Result
+
+Hệ thống hỗ trợ override 3 trường sender ở 3 cấp độ: **per-campaign** → **template** → **env default**.
+
+```
+From: "Tâm Hồ từ InCard" <Marketing@incard.biz>   ← from_name + from_email (hoặc MAIL_FROM_ADDRESS)
+Reply-To: tamho@incard.biz                          ← chỉ set khi reply_to được cung cấp
+```
+
+### Priority Chain
+
+| Header | Ưu tiên 1 (campaign) | Ưu tiên 2 (template) | Ưu tiên 3 (env fallback) |
+|---|---|---|---|
+| `From` tên | `dto.from_name` | `template.from_name` | `MAIL_FROM_NAME` từ `.env` |
+| `From` address | `dto.from_email` | `template.from_email` | `MAIL_FROM_ADDRESS` từ `.env` |
+| `Reply-To` | `dto.reply_to` | `template.reply_to` | _(không set header)_ |
+
+> **Lưu ý:** Nếu không có giá trị nào cho `Reply-To`, header `Reply-To` sẽ **không** được thêm vào email.
+> `from_email` phải là domain đã verify trên SendGrid: `@incard.biz` hoặc `@inapps.net`.
+
+### Use Cases
+
+| Tình huống | Cách dùng |
+|---|---|
+| Gửi dưới tên cá nhân, địa chỉ riêng | Set `from_name` + `from_email` trong template |
+| Override tên và địa chỉ cho một campaign | Truyền `from_name` + `from_email` trong `POST /emails/send` |
+| Cho phép user reply về hộp thư riêng | Set `reply_to` trong template hoặc request |
+| Dùng tên + địa chỉ mặc định từ env | Không truyền `from_name`/`from_email` |
+| Sender Name helper ("từ InCard") | Frontend: user nhập tên phần → stored as `"Tên từ InCard"` |
+
+---
+
+## Email Signatures
+
+Email Signature là chữ ký email được đính kèm tự động vào mỗi email gửi đi. Admin có thể quản lý nhiều signature và chọn một làm active.
+
+**Base path:** `GET|POST|PATCH|DELETE /api/admin/email-signatures`
+**Auth:** `AuthGuard` + `AdminGuard`
+
+### Auto-activation
+
+- Signature đầu tiên tạo ra sẽ tự động được set `is_active = 1`
+- Chỉ có **1 signature active** tại một thời điểm — khi activate một signature, tất cả signature còn lại bị set inactive
+- Khi xóa signature đang active → signature tiếp theo trong danh sách (theo `created_at ASC`) tự động được kích hoạt
+
+---
+
+### List All Signatures
+
+```http
+GET /api/admin/email-signatures
+```
+
+#### Response
+
+```json
+{
+  "status": true,
+  "message": "Lấy danh sách signatures thành công",
+  "data": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "label": "Chữ ký chính",
+      "name": "Tâm Hồ",
+      "title": "CEO",
+      "company": "InCard",
+      "phone": "+84 901 234 567",
+      "email": "tamho@incard.biz",
+      "website": "https://incard.vn",
+      "isActive": 1,
+      "createdAt": "2026-03-01T08:00:00.000Z",
+      "updatedAt": "2026-03-01T08:00:00.000Z"
+    }
+  ]
+}
+```
+
+> Kết quả sắp xếp theo `created_at ASC`.
+
+---
+
+### Create Signature
+
+```http
+POST /api/admin/email-signatures
+```
+
+#### Request Body
+
+| Field | Type | Bắt buộc | Mô tả |
+|---|---|---|---|
+| `label` | `string` | Không | Tên hiển thị trong danh sách (default: `name` hoặc `company`) |
+| `name` | `string` | Có (*) | Tên người ký |
+| `title` | `string` | Không | Chức vụ |
+| `company` | `string` | Có (*) | Tên công ty |
+| `phone` | `string` | Không | Số điện thoại |
+| `email` | `string` | Không | Email hiển thị trong signature |
+| `website` | `string` | Không | Website |
+
+> **(\*)** Cần ít nhất `name` **hoặc** `company`.
+
+#### Response `201 Created`
+
+```json
+{
+  "status": true,
+  "message": "Tạo signature thành công",
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "label": "Chữ ký chính",
+    "name": "Tâm Hồ",
+    "title": "CEO",
+    "company": "InCard",
+    "phone": "+84 901 234 567",
+    "email": "tamho@incard.biz",
+    "website": "https://incard.vn",
+    "isActive": 1,
+    "createdAt": "2026-03-25T08:00:00.000Z",
+    "updatedAt": "2026-03-25T08:00:00.000Z"
+  }
+}
+```
+
+---
+
+### Update Signature
+
+```http
+PATCH /api/admin/email-signatures/:id
+```
+
+Tất cả fields đều optional — chỉ cập nhật những field được truyền vào.
+
+> **Lưu ý:** `isActive` không thể cập nhật qua endpoint này. Dùng endpoint **Activate** bên dưới.
+
+#### Response `200 OK`
+
+Trả về signature sau khi cập nhật (cùng format với Create).
+
+---
+
+### Delete Signature
+
+```http
+DELETE /api/admin/email-signatures/:id
+```
+
+#### Response `200 OK`
+
+```json
+{
+  "status": true,
+  "message": "Xóa signature thành công",
+  "data": { "success": true }
+}
+```
+
+#### Error
+
+```json
+{ "status": false, "message": "Không tìm thấy signature", "data": null }
+```
+
+---
+
+### Set Active Signature
+
+Chọn một signature làm active. Signature active sẽ được đính kèm vào email gửi đi.
+
+```http
+POST /api/admin/email-signatures/:id/activate
+```
+
+#### Response `200 OK`
+
+```json
+{
+  "status": true,
+  "message": "Đặt signature active thành công",
+  "data": { "success": true }
+}
+```
+
+---
+
+### Database Schema — `email_signatures`
+
+```sql
+CREATE TABLE email_signatures (
+  id         VARCHAR(36) NOT NULL PRIMARY KEY,  -- UUID
+  label      VARCHAR(191) NOT NULL,             -- tên hiển thị trong danh sách
+  name       VARCHAR(191) NOT NULL DEFAULT '',  -- tên người ký
+  title      VARCHAR(191) NOT NULL DEFAULT '',  -- chức vụ
+  company    VARCHAR(191) NOT NULL DEFAULT '',  -- tên công ty
+  phone      VARCHAR(191) NOT NULL DEFAULT '',  -- số điện thoại
+  email      VARCHAR(191) NOT NULL DEFAULT '',  -- email hiển thị
+  website    VARCHAR(191) NOT NULL DEFAULT '',  -- website
+  is_active  TINYINT NOT NULL DEFAULT 0,        -- 1 = đang active
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+---
+
+## AI Settings & Knowledge Base
+
+Admin có thể cấu hình AI model, system prompt, và upload PDF làm knowledge base để AI generate email body chính xác hơn theo brand/sản phẩm.
+
+Tất cả settings được lưu trong bảng `setting_ai_email` (key-value store).
+
+**Base path:** `GET|PUT /api/admin/settings/:key` và `GET|POST|DELETE /api/admin/settings/knowledge-base`
+**Auth:** `AuthGuard` + `AdminGuard`
+
+---
+
+### Get AI Settings
+
+```http
+GET /api/admin/settings/ai_email_settings
+```
+
+#### Response
+
+```json
+{
+  "status": true,
+  "message": "Lấy cài đặt thành công",
+  "data": {
+    "key": "ai_email_settings",
+    "value": "{\"model\":\"gpt-4.1-mini\",\"systemPrompt\":\"...\",\"subjectSystemPrompt\":\"...\",\"userPromptTemplate\":\"{input}\"}"
+  }
+}
+```
+
+> `value` là JSON string. Parse để lấy các field con.
+
+---
+
+### Update AI Settings
+
+```http
+PUT /api/admin/settings/ai_email_settings
+```
+
+#### Request Body
+
+```json
+{
+  "value": "{\"model\":\"gpt-4o\",\"systemPrompt\":\"You are...\",\"subjectSystemPrompt\":\"Write a subject...\",\"userPromptTemplate\":\"{input}\"}"
+}
+```
+
+| Field trong `value` (JSON) | Mô tả | Default |
+|---|---|---|
+| `model` | OpenAI model ID | `gpt-4.1-mini` |
+| `systemPrompt` | System prompt cho generate **body** email | Xem `ai-prompt-storage.ts` |
+| `subjectSystemPrompt` | System prompt cho generate **subject** email | Xem `ai-prompt-storage.ts` |
+| `userPromptTemplate` | Template bọc input của user — phải chứa `{input}` | `{input}` |
+
+---
+
+### Upload Knowledge Base (PDF)
+
+Upload file PDF làm knowledge base. Backend extract text, lưu vào DB. AI sẽ dùng text này khi generate email body.
+
+```http
+POST /api/admin/settings/knowledge-base/upload
+Content-Type: multipart/form-data
+```
+
+#### Request
+
+| Field | Type | Bắt buộc | Mô tả |
+|---|---|---|---|
+| `file` | `binary` | Có | File PDF. Tối đa **5MB**. Chỉ chấp nhận `application/pdf` |
+
+#### Response `200 OK`
+
+```json
+{
+  "status": true,
+  "message": "Knowledge base đã được cập nhật",
+  "data": {
+    "filename": "incard-brand-guide.pdf",
+    "size_bytes": 204800,
+    "char_count": 12500,
+    "uploaded_at": "2026-03-25T10:00:00.000Z"
+  }
+}
+```
+
+#### Error Responses
+
+| HTTP | Message | Nguyên nhân |
+|---|---|---|
+| `400` | `Vui lòng chọn file PDF` | Không gửi file |
+| `400` | `Chỉ chấp nhận file PDF` | File không phải PDF |
+| `400` | `File quá lớn (tối đa 5MB)` | File > 5MB |
+| `400` | `File PDF không chứa text` | PDF toàn ảnh scan, không có text layer |
+| `400` | `Không thể đọc nội dung từ file PDF: ...` | PDF bị password protect hoặc corrupted |
+
+> **Giới hạn text:** PDF được truncate về tối đa **50,000 ký tự** (~10,000 tokens). Upload file mới sẽ **thay thế** knowledge base cũ.
+
+---
+
+### Get Knowledge Base Metadata
+
+```http
+GET /api/admin/settings/knowledge-base
+```
+
+#### Response khi có knowledge base
+
+```json
+{
+  "status": true,
+  "message": "Lấy knowledge base thành công",
+  "data": {
+    "filename": "incard-brand-guide.pdf",
+    "size_bytes": 204800,
+    "char_count": 12500,
+    "uploaded_at": "2026-03-25T10:00:00.000Z",
+    "preview": "InCard là nền tảng danh thiếp kỹ thuật số hàng đầu Việt Nam..."
+  }
+}
+```
+
+> `preview` chứa **500 ký tự đầu** của extracted text.
+
+#### Response khi chưa có
+
+```json
+{
+  "status": true,
+  "message": "Lấy knowledge base thành công",
+  "data": null
+}
+```
+
+---
+
+### Delete Knowledge Base
+
+```http
+DELETE /api/admin/settings/knowledge-base
+```
+
+#### Response `200 OK`
+
+```json
+{
+  "status": true,
+  "message": "Đã xóa knowledge base",
+  "data": null
+}
+```
+
+---
+
+### How Knowledge Base Affects AI Generation
+
+Khi admin upload PDF, text được inject vào system prompt lúc generate email:
+
+```
+[Existing system prompt]
+
+## Brand & Company Knowledge
+
+Use the following information about the company when writing emails.
+Stay consistent with the brand voice, product names, and key messages described below.
+
+[Extracted PDF text — max 50,000 chars]
+```
+
+**Áp dụng:** Chỉ khi generate **body** (`type=body`). Subject generation không dùng knowledge base.
+
+**Fallback:** Nếu knowledge base chưa được upload hoặc fetch lỗi → AI generate bình thường, không bị block.
+
+---
+
+### Keys trong `setting_ai_email`
+
+| Key | Nội dung |
+|---|---|
+| `ai_email_settings` | JSON: `{ model, systemPrompt, subjectSystemPrompt, userPromptTemplate }` |
+| `ai_knowledge_base` | Plain text extracted từ PDF (max 50,000 chars) |
+| `ai_knowledge_base_meta` | JSON: `{ filename, size_bytes, char_count, uploaded_at }` |
+
+---
+
 ## Database Schema
 
 ### `email_templates`
@@ -850,12 +1268,26 @@ Có template_id?
 CREATE TABLE email_templates (
   id         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   name       VARCHAR(191) NOT NULL,
-  `from`     VARCHAR(191) DEFAULT NULL,   -- địa chỉ gửi riêng (override .env)
+  from_name  VARCHAR(191) DEFAULT NULL,   -- tên người gửi hiển thị trong From header
+  from_email VARCHAR(191) DEFAULT NULL,   -- địa chỉ email gửi thực sự (phải verify trên SendGrid)
+  reply_to   VARCHAR(191) DEFAULT NULL,   -- Reply-To email (khi người nhận reply, email đến đây)
   created_by INT NOT NULL,                -- user id của admin tạo template
   created_at TIMESTAMP NULL DEFAULT NULL,
   updated_at TIMESTAMP NULL DEFAULT NULL
 );
 ```
+
+> **DB Migration đã thực hiện:**
+> ```sql
+> -- Đổi tên column `from` → `reply_to`
+> ALTER TABLE email_templates
+>   CHANGE COLUMN `from` `reply_to` VARCHAR(191) NULL;
+>
+> -- Thêm column `from_email`
+> ALTER TABLE email_templates
+>   ADD COLUMN `from_email` VARCHAR(191) NULL
+>   AFTER `from_name`;
+> ```
 
 ### `email_template_langs`
 
@@ -919,6 +1351,22 @@ src/modules/email/
 └── __tests__/
     ├── email.service.spec.ts              # 26 unit tests cho EmailService
     └── email.controller.spec.ts          # 18 unit tests cho EmailController + Guards
+
+src/modules/email-signatures/
+├── email-signatures.module.ts             # Module declaration
+├── email-signatures.controller.ts         # CRUD + activate endpoints
+├── email-signatures.service.ts            # Business logic (Drizzle ORM)
+└── dto/
+    ├── create-email-signature.dto.ts
+    └── update-email-signature.dto.ts
+
+src/modules/admin-settings/
+├── admin-settings.module.ts               # Module declaration
+├── admin-settings.controller.ts           # GET/PUT :key + knowledge-base endpoints
+├── admin-settings.service.ts              # getSettings/setSettings + uploadKnowledgeBase
+└── dto/
+    ├── update-settings.dto.ts
+    └── upload-knowledge-base.dto.ts
 ```
 
 ---

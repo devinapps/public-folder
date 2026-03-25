@@ -1,9 +1,9 @@
 # Email Campaign API Documentation
 
-**Version:** 2.3
+**Version:** 2.4
 **Base URL:** `http://localhost:3001/api`
 **Authentication:** JWT Bearer Token (Admin role required, except public endpoints)
-**Last Updated:** 2026-03-16
+**Last Updated:** 2026-03-24
 
 > **Note:** This document covers **Email Campaign features (Phase A, B, C, D)** — campaign history, email tracking, scheduled sending, and email list management. For basic email sending and template management, see [EMAIL_API.md](EMAIL_API.md).
 
@@ -143,6 +143,9 @@ Request body hỗ trợ thêm các field (optional):
 | `send_by_lang` | `boolean` | Không | Gửi theo ngôn ngữ người dùng (`users.lang`). Mỗi recipient nhận email theo ngôn ngữ của họ. Yêu cầu template có ≥ 2 ngôn ngữ |
 | `subject_vi` | `string` | Không | Override subject tiếng Việt khi `send_by_lang=true` |
 | `body_vi` | `string` | Không | Override body tiếng Việt (HTML) khi `send_by_lang=true` |
+| `from_name` | `string` | Không | Override tên người gửi hiển thị cho campaign này. Ưu tiên: `dto.from_name` → `template.from_name` → `MAIL_FROM_NAME` từ `.env` |
+| `from_email` | `string` | Không | Override địa chỉ email gửi thực sự. Phải là `@incard.biz` hoặc `@inapps.net`. Ưu tiên: `dto.from_email` → `template.from_email` → `MAIL_FROM_ADDRESS` từ `.env` |
+| `reply_to` | `string` | Không | Override địa chỉ Reply-To cho campaign này. Ưu tiên: `dto.reply_to` → `template.reply_to` → _(không set header)_ |
 
 **Recipient priority** (cao → thấp):
 1. `user_emails` — gửi thẳng, không query DB
@@ -193,7 +196,10 @@ Database (email_campaigns table):
   "subject": "March Newsletter",
   "body": "<h1>Hello</h1><p>Latest updates...</p>",
   "campaign_name": "Newsletter - Q1 2026",
-  "include_unsubscribe_link": true
+  "include_unsubscribe_link": true,
+  "from_name": "Tâm Hồ từ InCard",
+  "from_email": "tamho@incard.biz",
+  "reply_to": "support@incard.biz"
 }
 ```
 
@@ -735,6 +741,9 @@ Kết hợp `SendEmailDto` (xem [EMAIL_API.md](EMAIL_API.md#send-bulk-email)) + 
 | `send_by_lang` | `boolean` | Không | Gửi theo ngôn ngữ người dùng — mỗi recipient nhận theo `users.lang` |
 | `subject_vi` | `string` | Không | Override subject tiếng Việt khi `send_by_lang=true` |
 | `body_vi` | `string` | Không | Override body tiếng Việt (HTML) khi `send_by_lang=true` |
+| `from_name` | `string` | Không | Override tên người gửi hiển thị. Ưu tiên: `dto.from_name` → `template.from_name` → `MAIL_FROM_NAME` từ `.env` |
+| `from_email` | `string` | Không | Override địa chỉ email gửi thực sự (`@incard.biz` hoặc `@inapps.net`). Ưu tiên: `dto.from_email` → `template.from_email` → `MAIL_FROM_ADDRESS` từ `.env` |
+| `reply_to` | `string` | Không | Override Reply-To email. Ưu tiên: `dto.reply_to` → `template.reply_to` → _(không set header)_ |
 
 > **(\*)** Bắt buộc nếu không có `template_id`
 
