@@ -1,9 +1,9 @@
 # Email API Documentation
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 **Base URL:** `http://localhost:3001/api`
 **Authentication:** JWT Bearer Token (Admin role required)
-**Last Updated:** 2026-03-25
+**Last Updated:** 2026-03-26
 
 > **📧 New:** For **Email Campaign features** (campaign history, tracking, scheduling), see [EMAIL_CAMPAIGN_API.md](EMAIL_CAMPAIGN_API.md). This document covers basic email sending and template management only.
 
@@ -151,6 +151,7 @@ POST /api/emails/send
 | `user_ids` | `number[]` | Không | Lọc user theo danh sách ID |
 | `user_emails` | `string[]` | Không | Gửi trực tiếp đến danh sách email (không query DB) |
 | `user_types` | `string[]` | Không | Lọc theo loại: `"user"`, `"admin"`, `"super admin"` |
+| `industry_ids` | `number[]` | Không | Lọc user theo ngành nghề — tra ngược qua `businesses.category` (JSON keys) → `businesses.created_by` → `users`. Dùng OR logic khi có nhiều IDs |
 | `created_from` | `string` | Không | Lọc user đăng ký từ ngày (ISO 8601: `YYYY-MM-DD`) |
 | `created_to` | `string` | Không | Lọc user đăng ký đến ngày (ISO 8601: `YYYY-MM-DD`) |
 | `template_id` | `number` | Không | ID template có sẵn trong DB |
@@ -173,12 +174,12 @@ POST /api/emails/send
 > **Ưu tiên filter recipient** (cao → thấp):
 > 1. `user_emails` — gửi thẳng, không query DB
 > 2. `list_id` — lấy emails từ `email_list_members`
-> 3. `user_ids` / `user_types` / `created_from`+`created_to` — filter từ bảng users
-> 4. _(none)_ — toàn bộ users
+> 3. `user_ids` / `user_types` / `industry_ids` / `created_from`+`created_to` — filter từ bảng users (AND logic giữa các filter)
+> 4. _(none)_ — toàn bộ users (**yêu cầu** `ENABLE_SEND_ALL_USER=true`)
 >
 > `is_can_test=true` luôn áp dụng sau khi resolve recipients (trừ `user_emails`).
 
-> **Không truyền filter nào** → gửi cho **toàn bộ user** trong hệ thống.
+> **Không truyền filter nào** → gửi cho **toàn bộ user** trong hệ thống. Chỉ hoạt động khi `ENABLE_SEND_ALL_USER=true` trong `.env`. Nếu `false` → `400 Bad Request`.
 
 #### Response
 
@@ -824,16 +825,19 @@ Bảng tóm tắt tất cả cách lọc recipient cho `POST /api/emails/send`:
 
 | Filter | Field | Ví dụ | Ghi chú |
 |---|---|---|---|
-| Tất cả user | _(không truyền gì)_ | `{}` | Broadcast toàn bộ |
+| Tất cả user | _(không truyền gì)_ | `{}` | Broadcast toàn bộ — **chỉ khi `ENABLE_SEND_ALL_USER=true`** |
 | Theo email | `user_emails` | `["a@b.com"]` | Không query DB — nhanh nhất; bỏ qua mọi filter khác |
 | Theo Email List | `list_id` | `3` | Lấy từ `email_list_members` — ưu tiên 2 |
 | Theo user ID | `user_ids` | `[1, 5, 20]` | Query `WHERE id IN (...)` |
 | Theo loại TK | `user_types` | `["admin"]` | Query `WHERE type IN (...)` |
+| Theo ngành nghề | `industry_ids` | `[488, 487]` | Tra ngược: `businesses.category` JSON → `created_by` → `users`. OR logic giữa nhiều IDs |
 | Theo ngày ĐK | `created_from` + `created_to` | `"2024-01-01"` | `WHERE created_at BETWEEN ... AND ...` — `created_to` set 23:59:59 |
 | Chỉ test users | `is_can_test: true` | `true` | Kết hợp với bất kỳ filter trên (trừ `user_emails`) |
-| Kết hợp | Nhiều field | Xem ví dụ 9 | `user_ids` + `user_types` + date dùng AND logic |
+| Kết hợp | Nhiều field | Xem ví dụ 9 | Các filter dùng AND logic với nhau |
 
-> **Ưu tiên:** `user_emails` → `list_id` → `user_ids`/`user_types`/date → _(all users)_. `is_can_test` luôn áp dụng sau cùng (trừ `user_emails`).
+> **Ưu tiên:** `user_emails` → `list_id` → `user_ids`/`user_types`/`industry_ids`/date → _(all users)_. `is_can_test` luôn áp dụng sau cùng (trừ `user_emails`).
+>
+> **`industry_ids` + các filter khác**: Kết hợp AND — vd. `industry_ids + user_types` → users thuộc ngành đó VÀ có type phù hợp.
 
 ---
 
@@ -1320,7 +1324,13 @@ MAIL_USERNAME=your_smtp_username
 MAIL_PASSWORD=your_smtp_password
 MAIL_FROM_ADDRESS=noreply@incard.vn
 MAIL_FROM_NAME=InCard
+
+# Email Feature Flags
+ENABLE_SEND_ALL_USER=false       # true = cho phép gửi đến toàn bộ users khi không có filter
+                                 # false (default) = chặn, trả về 400 khi không có filter nào
 ```
+
+> **`ENABLE_SEND_ALL_USER`**: Bảo vệ khỏi vô tình broadcast email đến toàn bộ user. Nên để `false` trên production và staging. Chỉ bật `true` khi thực sự muốn gửi broadcast. Frontend (`CMS_InCard_admin`) phải sync qua `NEXT_PUBLIC_ENABLE_SEND_ALL_USER`.
 
 ### SMTP Providers phổ biến
 

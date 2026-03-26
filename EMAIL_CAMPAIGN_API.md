@@ -1,9 +1,9 @@
 # Email Campaign API Documentation
 
-**Version:** 2.4
+**Version:** 2.5
 **Base URL:** `http://localhost:3001/api`
 **Authentication:** JWT Bearer Token (Admin role required, except public endpoints)
-**Last Updated:** 2026-03-24
+**Last Updated:** 2026-03-26
 
 > **Note:** This document covers **Email Campaign features (Phase A, B, C, D)** — campaign history, email tracking, scheduled sending, and email list management. For basic email sending and template management, see [EMAIL_API.md](EMAIL_API.md).
 
@@ -730,6 +730,8 @@ Kết hợp `SendEmailDto` (xem [EMAIL_API.md](EMAIL_API.md#send-bulk-email)) + 
 | `user_emails` | `string[]` | Không | Gửi tới (dùng giống `SendEmailDto`) |
 | `user_ids` | `number[]` | Không | Lọc theo ID |
 | `user_types` | `string[]` | Không | Lọc theo type |
+| `industry_ids` | `number[]` | Không | Lọc theo ngành nghề — tra ngược `businesses.category` → `users`. OR logic giữa nhiều IDs |
+| `is_can_test` | `boolean` | Không | Nếu `true` → chỉ gửi cho users có `is_can_test=1`. Kết hợp với bất kỳ filter nào |
 | `created_from` | `string` | Không | Lọc theo date from |
 | `created_to` | `string` | Không | Lọc theo date to |
 | `template_id` | `number` | Không | Template ID |
@@ -1277,8 +1279,15 @@ REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 REDIS_PASSWORD=null  # or your redis password
 
+# Email Feature Flags
+ENABLE_SEND_ALL_USER=false  # true = cho phép broadcast toàn bộ users khi không có filter
+                            # false (default) = chặn, trả về 400 khi không truyền filter nào
+                            # Áp dụng cho cả POST /emails/send và POST /emails/schedule
+
 # Xem EMAIL_API.md cho MAIL_* vars
 ```
+
+> **`ENABLE_SEND_ALL_USER`**: Guard này nằm trong `resolveRecipients()` — kích hoạt khi **không có filter nào** (không có `user_ids`, `user_types`, `industry_ids`, `list_id`, `user_emails`, date range). Nếu có bất kỳ filter nào thì guard không chặn, dù biến này là `false`.
 
 ---
 
@@ -1288,7 +1297,7 @@ REDIS_PASSWORD=null  # or your redis password
 |---|---|---|
 | **Send Email** | ✅ Basic send | ✅ + auto-campaign tracking (Phase A) |
 | **Templates** | ✅ CRUD | ✅ Usable in send + schedule |
-| **Recipient Filter** | ✅ All filters | ✅ Same filters + schedule support |
+| **Recipient Filter** | ✅ All filters (incl. `industry_ids`) | ✅ Same filters + schedule support (incl. `industry_ids`, `is_can_test`) |
 | **Campaign Tracking** | ❌ | ✅ History + stats (Phase B, C) |
 | **Email Unsubscribe** | ❌ | ✅ Footer injection + blacklist (Phase A) |
 | **Open/Click Tracking** | ❌ | ✅ Pixel + redirect (Phase B) |
