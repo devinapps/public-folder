@@ -1,9 +1,9 @@
 # Email API Documentation
 
-**Version:** 1.6.0
+**Version:** 1.6.1
 **Base URL:** `http://localhost:3001/api`
 **Authentication:** JWT Bearer Token (Admin role required)
-**Last Updated:** 2026-03-26
+**Last Updated:** 2026-03-27
 
 > **📧 New:** For **Email Campaign features** (campaign history, tracking, scheduling), see [EMAIL_CAMPAIGN_API.md](EMAIL_CAMPAIGN_API.md). This document covers basic email sending and template management only.
 
@@ -551,11 +551,13 @@ PUT /api/emails/templates/:id
 |---|---|---|
 | `name` | `string` | Đổi tên template |
 | `from_name` | `string` | Đổi tên người gửi hiển thị (From header) |
-| `from_email` | `string` | Đổi địa chỉ email gửi thực sự (`@incard.biz` hoặc `@inapps.net`) |
+| `from_email` | `string` | Đổi địa chỉ email gửi thực sự (`@incard.biz` hoặc `@inapps.net`). **Gửi `""` (chuỗi rỗng) để reset về `MAIL_FROM_ADDRESS` mặc định của hệ thống** |
 | `reply_to` | `string` | Đổi địa chỉ Reply-To email (`@incard.biz` hoặc `@inapps.net`) |
 | `langs` | `LangItem[]` | Thay toàn bộ langs — **xóa cũ, thêm mới** |
 
 > **Lưu ý quan trọng về `langs`:** Nếu truyền `langs`, toàn bộ langs cũ sẽ bị **xóa** và thay bằng danh sách mới. Không truyền `langs` → langs hiện tại được **giữ nguyên**.
+
+> **`from_email` clear behavior:** Truyền `from_email: ""` → backend tự động lưu giá trị `MAIL_FROM_ADDRESS` từ `.env` vào DB (không lưu chuỗi rỗng). Không truyền field `from_email` → giá trị cũ được giữ nguyên.
 
 **Ví dụ — chỉ đổi tên (giữ langs cũ):**
 ```json
