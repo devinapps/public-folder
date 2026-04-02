@@ -3,7 +3,7 @@
 **Version:** 2.5
 **Base URL:** `http://localhost:3001/api`
 **Authentication:** JWT Bearer Token (Admin role required, except public endpoints)
-**Last Updated:** 2026-03-26
+**Last Updated:** 2026-04-01
 
 > **Note:** This document covers **Email Campaign features (Phase A, B, C, D)** — campaign history, email tracking, scheduled sending, and email list management. For basic email sending and template management, see [EMAIL_API.md](EMAIL_API.md).
 
@@ -1297,6 +1297,7 @@ ENABLE_SEND_ALL_USER=false  # true = cho phép broadcast toàn bộ users khi kh
 |---|---|---|
 | **Send Email** | ✅ Basic send | ✅ + auto-campaign tracking (Phase A) |
 | **Templates** | ✅ CRUD | ✅ Usable in send + schedule |
+| **Sender Groups** | ✅ CRUD + set-default | ✅ Usable in send + schedule (pre-fills from_name / from_email / reply_to / signature) |
 | **Recipient Filter** | ✅ All filters (incl. `industry_ids`) | ✅ Same filters + schedule support (incl. `industry_ids`, `is_can_test`) |
 | **Campaign Tracking** | ❌ | ✅ History + stats (Phase B, C) |
 | **Email Unsubscribe** | ❌ | ✅ Footer injection + blacklist (Phase A) |

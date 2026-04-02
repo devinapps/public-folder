@@ -1,6 +1,6 @@
 # Business Card & QR API Reference
 
-**Last updated:** 2026-03-19 (File upload fix: FileFieldsInterceptor — create + update endpoints now accept service_image_* and testimonial_image_*)
+**Last updated:** 2026-03-31
 **Base URL:** `{APP_URL}/api`
 **Auth:** `Authorization: Bearer <jwt_token>` (trừ endpoint public và check-card)
 
@@ -18,7 +18,6 @@
 | DELETE | `/api/cards/:id` | ✅ JWT | Xóa card |
 | POST | `/api/cards/banner/:id` | ✅ JWT | Upload banner |
 | POST | `/api/cards/link-card/:id` | ✅ JWT | Gắn physical NFC card |
-| POST | `/api/cards/:id/generate-deeplink` | ✅ JWT | Generate Firebase Dynamic Link |
 | POST | `/api/check-card/:cardCode` | ❌ Public (OptionalAuth) | Kiểm tra mã serial NFC card |
 | GET | `/api/businesses/public/:slug` | ❌ Public (OptionalAuth) | Profile công khai cho FE Web |
 
@@ -110,7 +109,8 @@ Authorization: Bearer <token>
 - **[Phase 1 - B2 ✅]** `request_status` — từ `contact_requets` table (dynamic query — không còn hardcode).
 - `sociallinks` = `social_links`: cùng nội dung, format `[{ "PlatformName": "url", "id": 0 }]`.
 - `industries`, `services`, `need_services`: luôn trả `[{id, name}]` — PHP lưu DB dạng `{"0":"name"}` và transform.
-- `settings`: object đã parse. Defaults: `{phone_enable:1, zalo_enable:1, whatsapp_enable:1}` merge với giá trị DB.
+- `settings`: object đã parse. Format: `{ phone_enable: 0|1, zalo_enable: 0|1, whatsapp_enable: 0|1 }` (integer, NOT boolean). Defaults: `{phone_enable:1, zalo_enable:1, whatsapp_enable:1}` merge với giá trị DB. PHP `getSettingsAttribute()` casts sang int.
+- `email` / `phone`: extracted từ `contact_infos.content` — PHP flat format: `[{"Email":"val","id":0},{"Phone":"val","id":1}]`.
 - `password`, `enable_password`: fields bảo vệ card bằng mật khẩu.
 
 ---
@@ -180,7 +180,7 @@ service_image_1: <file>         (optional, multipart — ảnh cho servicesInfo[
     "total_appointment": 0,
     "is_owner": true,
     "request_status": "not_requested",
-    "profile_url": "http://localhost:3001/nguyen-van-a-5432",
+    "profile_url": "http://localhost:3001/profile/nguyen-van-a-5432",
     "profiles_type": "mobile",
     "main_service": null,
     "key_strength": null,
@@ -201,7 +201,7 @@ service_image_1: <file>         (optional, multipart — ảnh cho servicesInfo[
 - Gọi webhook `CARD_WEBHOOK_URL` (fire and forget) với `{card_id, type: "upsert"}`.
 
 **Notes so sánh PHP:**
-- `profile_url` **KHÔNG có** `/profile/` prefix — đúng PHP `add()` behavior.
+- `profile_url` **có** `/profile/` prefix — NestJS behavior (PHP `add()` không có prefix, nhưng NestJS luôn include).
 - **KHÔNG có** `profile_qr`, `contact_qr`, `deeplink`, `banner_img`, `tags`, `owner_id`, `is_my_card`.
 - `slug` khi tạo mới: nếu `nguyen-van-a` đã tồn tại → `nguyen-van-a-1`, `nguyen-van-a-2`, ..., `nguyen-van-a-100` (sequential, match PHP behavior). **Trước đây dùng random 4-digit — đã fix 2026-03-17**.
 
@@ -392,7 +392,7 @@ testimonial_image_0: <file>     (optional, multipart — ảnh cho testimonials[
 - Gọi webhook `CARD_WEBHOOK_URL` với `{card_id, type: "upsert"}`.
 
 **Notes so sánh PHP:**
-- `profile_url` **KHÔNG có** `/profile/` prefix — đúng PHP `update()` behavior.
+- `profile_url` **có** `/profile/` prefix — NestJS behavior (PHP `update()` không có prefix).
 - **KHÔNG có** `profile_qr`, `contact_qr`, `deeplink`, `banner_img`, `tags`, `owner_id`, `is_my_card`.
 - Field `industries` (PHP) được lưu vào DB column `category`. Cả `industries` lẫn `category` đều được chấp nhận.
 
@@ -553,57 +553,7 @@ Content-Type: application/json
 
 ---
 
-## 8. POST `/api/cards/:id/generate-deeplink`
-
-**Mô tả:** Generate Firebase Dynamic Link cho card. Dùng để FE Web redirect vào app InCard.
-
-**Logic:**
-1. Nếu `business.deep_link_firebase` đã có → trả về luôn (không generate lại).
-2. Nếu chưa → call Firebase API → lưu vào DB → trả về.
-
-**Request:**
-```
-POST /api/cards/1/generate-deeplink
-Authorization: Bearer <token>
-```
-
-**Response (success):**
-```json
-{
-  "status": true,
-  "message": "",
-  "data": {
-    "deep_link_firebase": "https://inapps.page.link/abc123"
-  }
-}
-```
-
-**Response (error — chưa config Firebase):**
-```json
-{
-  "status": false,
-  "message": "FIREBASE_API_KEY chưa được cấu hình",
-  "data": null
-}
-```
-
-**Firebase API call (nội bộ):**
-```
-POST https://firebasedynamiclinks.googleapis.com/v1/shortLinks?key={FIREBASE_API_KEY}
-Body: {
-  "longDynamicLink": "https://inapps.page.link/?link={profileUrl}&apn=net.inapps.incard{env}&ibi=net.inapps.incard{env}&afl={profileUrl}&ifl={profileUrl}&ofl={profileUrl}"
-}
-```
-
-**ENV cần có:**
-```env
-FIREBASE_API_KEY=AIzaSy...
-APP_ENV=staging|development|production
-```
-
----
-
-## 9. POST `/api/check-card/:cardCode`
+## 8. POST `/api/check-card/:cardCode`
 
 **Mô tả:** Kiểm tra trạng thái của NFC card serial. Dùng trước khi link card.
 
@@ -648,7 +598,7 @@ POST /api/check-card/ABC123XYZ
 
 ---
 
-## 10. GET `/api/businesses/public/:slug`
+## 9. GET `/api/businesses/public/:slug`
 
 **Mô tả:** Profile công khai cho FE Web (trang `incard.biz/profile/{slug}`). Không cần auth, có OptionalAuth.
 
@@ -682,7 +632,6 @@ GET /api/businesses/public/ABC123XYZ           ← dùng QR code thay vì slug
       "total_view": 11,
       "total_scan": 3,
       "deep_link": "http://localhost:3001/profile/nguyen-van-a",
-      "deep_link_firebase": "https://inapps.page.link/abc123",
       "settings": { "phone_enable": 1 },
       "industries": [{ "id": "0", "name": "Technology" }],
       "services": [{ "id": "0", "name": "Consulting" }],
@@ -697,8 +646,7 @@ GET /api/businesses/public/ABC123XYZ           ← dùng QR code thay vì slug
     "services": [...],
     "media": [...],
     "testimonials": [...],
-    "socials": [...],
-    "deep_link_firebase": "https://inapps.page.link/abc123"
+    "socials": [...]
   }
 }
 ```
@@ -738,31 +686,6 @@ Encode vào QR: vCard VCF string
   END:VCARD
 Size: 800×800 px, Error correction: H
 Serve tại: GET /storage/contact_qr/{slug}.png
-```
-
----
-
-## Flow đầy đủ: QR scan → App deeplink
-
-```
-1. User quét QR code vật lý (physical NFC card)
-   → QR encode URL: {APP_URL}/profile/{qrCode.code}
-
-2. GET /api/businesses/public/{qrCode.code}?fromScan=1
-   → Tìm business theo slug, nếu không có → tìm theo qrcode_generated.code
-   → Track scan (business_history + total_scan++)
-   → Tạo contact_request type=recent nếu cần
-   → Trả về full profile + deep_link_firebase
-
-3. FE Web hiển thị profile, nút "Mở trong app"
-
-4. POST /api/cards/{id}/generate-deeplink
-   → Generate Firebase short link nếu chưa có
-   → Trả { deep_link_firebase: "https://inapps.page.link/xxx" }
-
-5. Firebase Dynamic Link:
-   ├── Đã có app InCard → Mở thẳng vào app
-   └── Chưa có app → Redirect về web URL (afl/ifl/ofl fallback)
 ```
 
 ---
@@ -808,6 +731,21 @@ Note: findBySlug() uses ORDER BY id ASC LIMIT 1 — trả về record cũ nhất
 | POST `/api/cards/update/:id` | AI webhook | ✅ **[Phase 2 - B3]** IMPLEMENTED | Fire-and-forget call đến `RENEW_POTENTIAL_PROFILE_WEBHOOK_URL` |
 | DELETE `/api/cards/:id` | Cascade delete | ✅ **[Phase 4 - B4]** IMPLEMENTED | Xóa tất cả child records (contactInfos, businessHours, services, testimonials, histories) |
 | GET `/api/cards/:id` | `?type=serial` | ✅ **[Phase 1 - B1]** IMPLEMENTED | Lookup card theo QR serial code thay vì numeric ID |
+
+### contact_infos.content Format (PHP-compatible)
+
+`contact_infos.content` lưu JSON array flat format (PHP-compatible):
+```json
+[
+  { "Email": "owner@example.com", "id": 0 },
+  { "Phone": "0901234567", "id": 1 }
+]
+```
+
+> ⚠️ NestJS từng dùng nested format (`{ "Email": [{ "value": "...", "label": "Email" }] }`).
+> Đã fix để dùng PHP flat format. Extraction code handle backward compat với data cũ.
+
+> `POST /api/cards/:id/generate-deeplink` **đã bị xóa** — Firebase Dynamic Links deprecated tháng 8/2025.
 
 ### Reference Documentation
 - **Postman Collection**: [user-profiles.json](../user-profiles.json) — 3 new test endpoints (8, 9, 10)
